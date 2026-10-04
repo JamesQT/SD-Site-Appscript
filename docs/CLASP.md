@@ -14,7 +14,7 @@ node tools/check.cjs
 clasp.cmd push
 ```
 
-La lista debe contener 27 archivos: 16 módulos `.gs`, 10 HTML y el manifiesto. `.claspignore` contiene la lista explícita; actualizarla si se agrega un módulo a `project-files.json`.
+La lista debe contener 29 archivos: 17 módulos `.gs`, 11 HTML y el manifiesto. `.claspignore` contiene la lista explícita; actualizarla si se agrega un módulo a `project-files.json`.
 
 `push` actualiza los archivos del editor de Google. La web publicada se actualiza después, creando una nueva versión desde Administrar implementaciones y editando la implementación existente para conservar la URL.
 

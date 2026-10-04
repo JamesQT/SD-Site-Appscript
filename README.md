@@ -9,7 +9,7 @@ Corrección 3.0.1: si instalaste la entrega modular inicial y aparece **Malforme
 ## Actualización de la aplicación
 
 1. Conserva una copia del proyecto y del Sheet.
-2. Reemplaza **Code.gs, Index.html, Client.html y Styles.html** y crea los nuevos módulos. **Ahora necesitas todos los 16 archivos .gs y 10 HTML de la raíz**, enumerados en project-files.json. No subas las carpetas tests, tools o docs. Sigue la [guía de instalación](docs/DESPLIEGUE.md).
+2. Reemplaza **Code.gs, Index.html, Client.html y Styles.html** y crea los nuevos módulos. **Ahora necesitas todos los 17 archivos .gs y 11 HTML de la raíz**, enumerados en project-files.json. No subas las carpetas tests, tools o docs. Sigue la [guía de instalación](docs/DESPLIEGUE.md).
 3. Guarda y actualiza la implementación para utilizar la nueva versión.
 4. Ingresa como ADMIN y abre **Administración → Preparar o actualizar tablas**. Se añaden los encabezados faltantes al final de las hojas existentes y se crea NOTIFICACIONES, conservando datos, IDs y columnas adicionales. También se instalan los disparadores de edición y cambio estructural para detectar cambios directos en Sheets. Puedes repetir esta acción. Si hay encabezados duplicados, corrígelos primero.
 5. En Automatización y correos, marca **Activar ejecución cada hora** y, para enviar avisos, **Enviar notificaciones por correo**. Guarda la configuración con el administrador que se hará cargo. Google requiere autorizar correo y disparadores; completa el consentimiento si la implementación lo solicita.

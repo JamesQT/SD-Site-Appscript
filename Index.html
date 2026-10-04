@@ -12,6 +12,7 @@
         <div class="brand"><span class="brand-mark">SD</span><span><strong>SD Control</strong><small>Solution Development</small></span></div>
         <nav id="main-nav" aria-label="Navegación principal">
           <button class="nav-item active" data-view="inicio"><span>⌂</span>Inicio</button>
+          <button class="nav-item" data-view="kanban"><span>▦</span>Kanban</button>
           <button class="nav-item" data-view="compromisos"><span>▤</span>Compromisos</button>
           <button class="nav-item" data-view="mis-tareas"><span>✓</span>Mis tareas</button>
           <button class="nav-item" data-view="aprobaciones"><span>◎</span>Aprobaciones <b id="approval-badge" class="nav-badge">0</b></button>
@@ -45,6 +46,11 @@
           </div>
         </section>
 
+        <section class="view" id="view-kanban">
+          <div class="page-head"><div><h1>Tablero Kanban</h1><p>Mueve los compromisos abiertos. El cierre mantiene las evidencias y aprobaciones.</p></div><button class="button primary" data-action="open-create">＋ Nuevo compromiso</button></div>
+          <div class="toolbar"><input class="control search" id="board-search" aria-label="Buscar en Kanban" placeholder="Buscar título, responsable o proyecto…"><label class="check-field"><input type="checkbox" id="board-mine"> Solo mis tareas</label></div>
+          <div id="kanban-board" class="kanban-board" aria-live="polite"></div>
+        </section>
         <section class="view" id="view-compromisos">
           <div class="page-head"><div><h1>Compromisos</h1><p>Consulta responsable, fecha, estado y criticidad.</p></div><button class="button primary" data-action="open-create">＋ Nuevo compromiso</button></div>
           <div class="toolbar"><input class="control search" id="commitment-search" placeholder="Buscar compromiso…"><select class="control" id="filter-status"><option value="">Todos los estados</option><option value="PENDIENTE">Pendiente</option><option value="EN_CURSO">En curso</option><option value="BLOQUEADO">Bloqueado</option><option value="EN_APROBACION">En aprobación</option><option value="CERRADO">Cerrado</option><option value="ANULADO">Anulado</option></select><select class="control" id="filter-type"><option value="">Todos los tipos</option></select></div>

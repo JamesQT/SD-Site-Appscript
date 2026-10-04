@@ -107,6 +107,7 @@ function decorateCommitment_(c, userById) {
     approver_name: userById[c.aprobador_actual_id]?.nombre || c.aprobador_actual_id || '',
     type_name: (catalogIndexes_.types[c.tipo_id] || {}).nombre || c.tipo_id,
     _version: recordVersion_(c),
+    checklist: checklistItems_(c),
     project_name: c.proyecto_id ? ((catalogIndexes_.projects[c.proyecto_id] || {}).nombre || '') : 'Sin proyecto'
   });
 }
