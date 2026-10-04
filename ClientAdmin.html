@@ -1,3 +1,4 @@
+<script>
 /** Formularios y vistas de administración, recurrencias y equipo. */
 
   const adminDefinitions = {
@@ -151,3 +152,5 @@
     const rows=state.data.team;
     $('#team-grid').innerHTML = rows.length ? rows.map(p=>`<article class="team-card"><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.role)}</p><div class="team-metrics"><span><strong>${p.open}</strong>Abiertos</span><span><strong>${p.overdue}</strong>Vencidos</span><span><strong>${p.approvals}</strong>Por aprobar</span></div></article>`).join('') : emptyTable('No hay usuarios activos.');
   }
+
+</script>

@@ -5,7 +5,7 @@
 1. Guarda una copia del proyecto de Apps Script y del Sheet actual. La copia local previa a esta reorganización está en `SD-Control-Apps-Script-antes-modularizar` dentro del espacio de trabajo.
 2. En el proyecto existente, reemplaza Code, Client, Index y Styles por sus nuevas versiones.
 3. Crea archivos de **secuencia de comandos** para todos los demás `.gs` de la raíz y archivos de **HTML** para todos los nuevos `Client*.html`. El editor añade las extensiones; escribe nombres como Auth, Repository y ClientApi.
-4. Usa `project-files.json` como lista exacta: 16 archivos de servidor y 10 HTML. Los componentes HTML parciales contienen JavaScript sin `<script>`; copia su contenido tal como está.
+4. Usa `project-files.json` como lista exacta: 16 archivos de servidor y 10 HTML. Los componentes HTML parciales incluyen su bloque `<script>`; copia todo su contenido, incluidas esas etiquetas.
 5. Conserva la configuración del despliegue y del manifiesto existentes. Guarda todo antes de publicar una nueva versión desde Administrar implementaciones.
 6. Entra como ADMIN y pulsa **Administración → Preparar o actualizar tablas**. Además del esquema, esta acción instala dos disparadores para el Sheet: edición y cambio estructural. Autoriza los permisos de Google si se solicitan. Repetir la acción desde la misma cuenta no duplica esos disparadores.
 7. Abre nuevamente la web. Comprueba apertura de detalle, actualización, aprobación y seguimiento con datos de prueba.

@@ -1,3 +1,4 @@
+<script>
 /** Navegación y representación de listas, filtros e indicadores. */
 
   /**
@@ -144,3 +145,5 @@
     $('#breadcrumb-current').textContent=({inicio:'Inicio',compromisos:'Compromisos','mis-tareas':'Mis tareas',aprobaciones:'Aprobaciones',recurrentes:'Línea base',equipo:'Equipo',admin:'Administración'})[name]||name;
     if (name==='admin') renderAdmin().catch(showError);
   }
+
+</script>

@@ -39,7 +39,7 @@ No debe añadirse lógica de negocio a Code.gs. Una operación pública autentic
 | ClientCommitments | Detalle, creación, seguimiento y actividad paginada. |
 | ClientEvents | Manejadores de clic y envío, doble clic y arranque de la aplicación. |
 
-Los componentes parciales contienen JavaScript sin etiquetas `<script>`. Client.html proporciona la etiqueta y el cierre. Sus inclusiones se evalúan mediante `include`; no deben abrirse como páginas independientes.
+Cada componente parcial contiene JavaScript envuelto en `<script>` para que HTML Service lo interprete correctamente. `include` lee ese bloque y extrae su contenido para insertarlo dentro del único cierre privado de Client.html. No se evalúa JavaScript suelto como plantilla HTML ni se insertan etiquetas script anidadas. Los componentes no deben abrirse como páginas independientes.
 
 ## Ciclo de una operación
 

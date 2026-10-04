@@ -11,7 +11,13 @@ function serverSource() {
 /** Resuelve solo inclusiones estáticas autorizadas por el inventario del proyecto. */
 function renderHtml(name='Index.html',parents=[],uiConfig={}) {
   if(!manifest.html.includes(name)||parents.includes(name))throw new Error('Inclusión inválida: '+name);
-  return fs.readFileSync(path.join(root,name),'utf8')
+  let source=fs.readFileSync(path.join(root,name),'utf8');
+  if(name.startsWith('Client') && name!=='Client.html') {
+    const script=source.match(/^\s*<script>\s*([\s\S]*?)\s*<\/script>\s*$/);
+    if(!script)throw new Error('Componente sin bloque script: '+name);
+    source=script[1];
+  }
+  return source
     .replace('<?!= JSON.stringify(getClientConfig_()); ?>',()=>JSON.stringify(uiConfig))
     .replace(/<\?!=\s*include\('([\w]+)'\);\s*\?>/g,(_,child)=>renderHtml(child+'.html',[...parents,name],uiConfig));
 }

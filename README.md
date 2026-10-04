@@ -4,6 +4,8 @@ Servidor e interfaz separados por responsabilidades, con JSDoc en funciones, con
 
 Guías: [arquitectura y módulos](docs/ARQUITECTURA.md), [contratos de operaciones](docs/CONTRATOS.md) e [instalación, entorno de pruebas y recuperación](docs/DESPLIEGUE.md).
 
+Corrección 3.0.1: si instalaste la entrega modular inicial y aparece **Malformed HTML content**, reemplaza Code.gs y los siete componentes ClientCore, ClientApi, ClientAdmin, ClientViews, ClientApprovals, ClientCommitments y ClientEvents. Conserva sus etiquetas `<script>` nuevas, guarda y publica una nueva versión. Los otros módulos de negocio no cambian.
+
 ## Actualización de la aplicación
 
 1. Conserva una copia del proyecto y del Sheet.
