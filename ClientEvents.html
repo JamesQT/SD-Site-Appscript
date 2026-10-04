@@ -1,0 +1,122 @@
+/** Eventos de interacción, bloqueo de envíos y arranque de la aplicación. */
+  /**
+   * Atiende navegación y acciones, fijando el objetivo y las versiones antes de enviar decisiones.
+   * @param {MouseEvent} event - Clic delegado de la página.
+   * @returns {Promise<void>} Finalización de la acción, si requiere servidor.
+   */
+  async function handleClick(event) {
+    const nav=event.target.closest('.nav-item[data-view]');
+    if (nav) return setView(nav.dataset.view);
+    const row=event.target.closest('tr[data-id]');
+    if (row) return openDetail(row.dataset.id);
+    const button=event.target.closest('[data-action]');
+    if (!button) return;
+    const action=button.dataset.action;
+    if (['edit-admin','new-admin','new-recurrence','manage-recurrences','reassign','cancel-commitment','initialize-features','run-operations','retry-notification'].includes(action)) {
+      try { await handleFeatureAction(button); } catch(error) { showError(error); }
+      return;
+    }
+    if (action==='sync-now') return synchronize(true);
+    if (action==='reload-local-detail') return openDetail(state.detailId);
+    if (action==='reload-approval') return openApproval(button.dataset.id,$('#decision-comment') ? $('#decision-comment').value : '');
+    if (action==='retry-detail') return openDetail(button.dataset.id);
+    if (action==='activity-more') return loadActivity(state.detailId, state.detailLoad, !state.activity.length);
+    if (action==='open-create') return openCreate();
+    if (action==='close-dialog') return closeDialog(button);
+    if (action==='go') return setView(button.dataset.target);
+    if (action==='open-approval') return openApproval(button.dataset.id);
+    if (action==='open-evidence') {
+      closeDialog(button);
+      const form=$('#evidence-form'); form.reset(); form.elements.compromiso_id.value=button.dataset.id;form.dataset.version=$('#detail-content').dataset.version;
+      const c = state.data.commitments.find(x => x.compromiso_id === button.dataset.id);
+      const needsApproval = c && (c.requiere_aprobacion === true || String(c.requiere_aprobacion).toUpperCase() === 'TRUE' || c.requiere_aprobacion === 1);
+      $('#evidence-dialog .dialog-head p').textContent = needsApproval ? 'El compromiso pasará a aprobación.' : 'El compromiso se cerrará con la evidencia registrada.';
+      $('#evidence-form button[type=submit]').textContent = needsApproval ? 'Enviar a aprobación' : 'Cerrar compromiso';
+      $('#evidence-dialog').showModal(); return;
+    }
+    if (action==='decide') {
+      if (!state.selectedApproval || state.deciding) return;
+      state.deciding = true;state.mutations++;state.epoch++;
+      const selectedId = state.selectedApproval.aprobacion_id, selectedVersion=state.selectedApproval._version, commitmentVersion=state.selectedApproval.compromiso._version;
+      const decisionComment = $('#decision-comment').value;
+      $$('#approval-detail button').forEach(b => b.disabled = true);
+      try {
+        const result=await callServer('decideApproval',{aprobacion_id:selectedId,decision:button.dataset.decision,comentario:decisionComment,expected_version:commitmentVersion,approval_version:selectedVersion});
+        state.selectedApproval=null;$('#approval-detail').textContent='Selecciona una aprobación para revisar.';applyMutation(result);
+        showToast(button.dataset.decision==='APROBAR'?'Aprobación registrada.':'Compromiso devuelto al responsable.');
+      } catch (error) { mutationError(error); }
+      finally { state.mutations--;state.epoch++;if(state.syncRequested){state.syncRequested=false;synchronize();}state.deciding = false; $$('#approval-detail button').forEach(b => b.disabled = false); }
+    }
+  }
+
+  /**
+   * Envía formularios con bloqueo de doble clic, conservando el borrador cuando falla el guardado.
+   * @param {SubmitEvent} event - Envío del formulario.
+   * @returns {Promise<void>} Finalización de la operación y liberación del estado ocupado.
+   */
+  async function handleSubmit(event) {
+    const form = event.target;
+    if (!['create-form','evidence-form','update-form','feature-form','comment-form','automation-form'].includes(form.id)) return;
+    event.preventDefault();
+    if (form.dataset.busy === 'true') return;
+    form.dataset.busy = 'true';state.mutations++;state.epoch++;
+    const submitButtons = $$('button[type=submit]', form);
+    submitButtons.forEach(b => b.disabled = true);
+    try {
+    if(form.id==='feature-form') {
+      try {
+        const result=await callServer(form.dataset.action,Object.assign(formObject(form),JSON.parse(form.dataset.payload),{request_id:form.dataset.requestId}));
+        $('#feature-dialog').close();if(result.detail||result.remove)applyMutation(result);else await refreshFeatures();showToast('Cambios guardados.');
+      } catch(error) {$('#feature-error').textContent=error.message;if(error.code==='CONFLICT')state.syncRequested=true;}
+    }
+    if(form.id==='comment-form') {
+      try {
+        const result=await callServer('addCommitmentComment',{compromiso_id:form.dataset.id,comentario:form.elements.comentario.value,request_id:form.dataset.requestId});
+        addLocalComment(result,form);showToast('Comentario registrado.');
+      } catch(error) {showToast(error.message);}
+    }
+    if(form.id==='automation-form') {
+      try {
+        await callServer('saveAutomationSettings',{enabled:$('#automation-enabled').checked,email:$('#automation-email').checked});
+        await refreshFeatures();showToast('Automatización actualizada.');
+      } catch(error) {showError(error);}
+    }
+    if (event.target.id==='create-form') {
+      event.preventDefault();
+      try { const result=await callServer('createCommitment',Object.assign(formObject(event.target), {request_id: form.dataset.requestId})); $('#create-dialog').close(); applyMutation(result);showToast('Compromiso creado.'); }
+      catch(error) { mutationError(error,form); }
+    }
+    if (event.target.id==='evidence-form') {
+      event.preventDefault();
+      try { const result = await callServer('submitEvidence',Object.assign(formObject(form),{expected_version:form.dataset.version})); $('#evidence-dialog').close();applyMutation(result); showToast(result.state === 'CERRADO' ? 'Compromiso cerrado con evidencia.' : 'Evidencia enviada a aprobación.'); }
+      catch(error) { mutationError(error,form); }
+    }
+    if (event.target.id==='update-form') {
+      event.preventDefault();
+      const current=formObject(form),baseline=JSON.parse(form.dataset.baseline),changes={};
+      Object.keys(baseline).forEach(k=>{const value=k==='porcentaje_avance'?Number(current[k]):current[k];if(String(value)!==String(baseline[k]))changes[k]=value;});
+      const payload={compromiso_id:form.dataset.id,expected_version:form.dataset.version,changes:changes};
+      if(!Object.keys(changes).length){showToast('No hay cambios para guardar.');return;}
+      try { const result=await callServer('updateCommitment',payload); $('#detail-dialog').close();applyMutation(result); showToast('Avance actualizado.'); }
+      catch(error) { mutationError(error,form); }
+    }
+    } finally { form.dataset.busy = 'false'; submitButtons.forEach(b => b.disabled = false);state.mutations--;state.epoch++;if(state.syncRequested){state.syncRequested=false;synchronize();} }
+  }
+
+  /** Registra eventos una sola vez y solicita la instantánea inicial. */
+  function startClient() {
+    document.addEventListener('click',handleClick);
+    document.addEventListener('submit',handleSubmit);
+    $('#commitment-search').addEventListener('input',applyFilters);
+    $('#filter-status').addEventListener('change',applyFilters);
+    $('#filter-type').addEventListener('change',applyFilters);
+    $('#task-status-filter').addEventListener('change',applyFilters);
+    $('#admin-section').addEventListener('change',()=>renderAdmin().catch(showError));
+    // Marcar el borrador evita que futuras actualizaciones lo traten como un formulario nuevo.
+    document.addEventListener('input',event=>{const form=event.target.closest('form');if(form)form.dataset.dirty='true';});
+    setInterval(()=>{if(!document.hidden)synchronize();},UI_CONFIG.syncIntervalMs);
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)synchronize();});
+    refresh();
+  }
+
+  startClient();

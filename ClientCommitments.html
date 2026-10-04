@@ -1,0 +1,104 @@
+/** Detalle, actividad y formularios de compromisos. */
+
+  /**
+   * Construye seguimiento y acciones adicionales permitidas en el detalle.
+   * @param {*} detail - Detalle autorizado o texto explicativo, según la función.
+   * @returns {string} Secciones de seguimiento y acciones adicionales.
+   */
+  function renderDetailFeatures(detail) {
+    const c=detail.commitment;
+    const open=!['CERRADO','ANULADO'].includes(c.estado);
+    return `<section class="detail-section"><h3>Seguimiento</h3><div id="detail-comments">Consulta el historial para ver comentarios anteriores.</div><form id="comment-form" data-id="${escapeHtml(c.compromiso_id)}" data-request-id="${crypto.randomUUID()}"><label class="form-field">Nuevo comentario<textarea name="comentario" rows="3" required maxlength="2000"></textarea></label><div class="dialog-actions"><button type="submit" class="button primary">Publicar comentario</button></div></form></section>${open?`<div class="dialog-actions">${state.data.isAdmin?`<button class="button" data-action="reassign" data-id="${escapeHtml(c.compromiso_id)}">Reasignar</button>`:''}${state.data.isAdmin||c.owner_id===state.data.user.id?`<button class="button danger" data-action="cancel-commitment" data-id="${escapeHtml(c.compromiso_id)}">Anular con motivo</button>`:''}</div>`:''}`;
+  }
+
+  /**
+   * Actualiza historial y comentarios sin reconstruir el formulario de avance.
+   */
+  function updateActivityView() {
+    const comments=$('#detail-comments'),history=$('#detail-history'),button=$('#activity-more');if(!comments||!history||!button)return;
+    comments.innerHTML=state.activity.filter(h=>h.accion==='COMMENT').map(h=>`<div class="list-row"><div><strong>${escapeHtml(h.usuario_nombre||personName(h.usuario_id))}</strong><p class="comment-text">${escapeHtml(h.detalle)}</p><small>${escapeHtml(h.fecha_evento)}</small></div></div>`).join('')||emptyTable(state.activityCursor?'Sin comentarios en la actividad cargada. Puedes consultar registros anteriores.':'Sin comentarios.');
+    history.innerHTML=state.activity.map(h=>`<div class="list-row"><div><strong>${escapeHtml(h.accion)}</strong><small>${escapeHtml(h.fecha_evento)} · ${escapeHtml(h.detalle||h.campo||'')}</small></div><span class="muted">${escapeHtml(h.usuario_nombre||h.usuario_id)}</span></div>`).join('')||emptyTable('Sin eventos registrados.');
+    button.textContent='Ver más actividad';button.classList.toggle('hidden',!state.activityCursor);
+  }
+
+  /**
+   * Incorpora el comentario guardado y conserva las demás ediciones del detalle.
+   * @param {Object} result - Respuesta autorizada del servidor.
+   * @param {*} form - Formulario cuyo borrador debe conservarse.
+   */
+  function addLocalComment(result,form) {
+    const id=result.id,c=result.comment,old=state.activityCache[id];
+    const history=[Object.assign({},c,{usuario_nombre:state.data.user.name}),...(old?old.history:[])].filter((h,i,all)=>all.findIndex(x=>x.historial_id===h.historial_id)===i);
+    const cursor=old?old.cursor:c._row;
+    state.activityCache[id]={history:history,cursor:cursor,version:result.detail?result.detail.activityVersion:c.historial_id};
+    applyMutation(result);
+    if(state.detailId===id&&$('#detail-dialog').open){state.activity=history;state.activityCursor=cursor;updateActivityView();form.reset();form.dataset.requestId=crypto.randomUUID();form.dataset.dirty='false';}
+  }
+
+  /**
+   * Abre el detalle local y fija la versión mostrada; no realiza llamadas al servidor.
+   * @param {*} id - Identificador del registro.
+   */
+  function openDetail(id) {
+    const detail=state.details[id];
+    if (!detail) return showToast('Este compromiso ya no está disponible. Actualiza los datos.');
+    ++state.detailLoad; ++state.activityLoad;
+    state.activityBusy=false;state.activity=[];state.activityCursor=null;state.detailId=id;
+      const c = detail.commitment;
+      $('#detail-content').dataset.version=c._version;
+      const statuses = ['PENDIENTE','EN_CURSO','BLOQUEADO'].map(s=>`<option value="${s}" ${s===c.estado?'selected':''}>${statusName(s)}</option>`).join('');
+      const canClose = detail.permissions.close;
+      const canEdit = detail.permissions.edit;
+      const evidence = detail.evidence.map(e=>`<div class="list-row"><a href="${escapeHtml(e.url_drive)}" target="_blank" rel="noopener">${escapeHtml(e.nombre_archivo||'Evidencia')} ↗</a><small>${dateLabel(e.fecha_subida)}</small></div>`).join('') || '<div class="empty-state">Sin evidencia.</div>';
+      $('#detail-content').innerHTML = `<div class="dialog-head"><div><h2>${escapeHtml(c.titulo)}</h2><p>${escapeHtml(c.compromiso_id)} · ${escapeHtml(c.type_name)} · ${escapeHtml(c.project_name)}</p></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><p id="detail-update-note" class="form-error hidden"></p><div class="detail-grid"><div class="detail-row"><span>Responsable</span><span>${escapeHtml(c.owner_name)}</span></div><div class="detail-row"><span>Fecha objetivo</span><span>${dateLabel(c.fecha_objetivo)}</span></div><div class="detail-row"><span>Estado</span><span class="pill ${statusClass(c.estado)}">${statusName(c.estado)}</span></div><div class="detail-row"><span>Criticidad</span><span class="pill ${criticalityClass(c.criticidad)}">${criticalityName(c.criticidad)}</span></div><div class="detail-row"><span>Aprobador</span><span>${escapeHtml(c.approver_name)}</span></div><div class="detail-row"><span>Descripción</span><span>${escapeHtml(c.descripcion||'—')}</span></div></div>${canEdit?`<div class="detail-section"><h3>Actualizar avance</h3><form id="update-form" data-id="${escapeHtml(c.compromiso_id)}" data-version="${escapeHtml(c._version)}" data-baseline="${escapeHtml(JSON.stringify({estado:c.estado,porcentaje_avance:c.porcentaje_avance,fecha_objetivo:c.fecha_objetivo,descripcion:c.descripcion||''}))}"><div class="form-grid"><label class="form-field">Estado<select name="estado">${statuses}</select></label><label class="form-field">Avance (%)<input type="number" name="porcentaje_avance" min="0" max="99" value="${Number(c.porcentaje_avance)||0}"></label><label class="form-field">Fecha objetivo<input type="date" name="fecha_objetivo" value="${escapeHtml(c.fecha_objetivo||'')}"></label><label class="form-field full">Descripción / actualización<textarea name="descripcion" rows="2" maxlength="2000">${escapeHtml(c.descripcion||'')}</textarea></label></div><p id="detail-save-error" class="form-error" role="alert"></p><div class="dialog-actions"><button class="button primary" type="submit">Guardar avance</button></div></form></div>`:''}${canClose?`<div class="dialog-actions"><button class="button" data-action="open-evidence" data-id="${escapeHtml(c.compromiso_id)}">${c.requiere_aprobacion === true || String(c.requiere_aprobacion).toUpperCase() === 'TRUE' || c.requiere_aprobacion === 1 ? 'Adjuntar evidencia y enviar a aprobación' : 'Adjuntar evidencia y cerrar'}</button></div>`:''}<div class="detail-section"><h3>Evidencias</h3>${evidence}</div><div class="detail-section"><h3>Historial</h3><div id="detail-history">El historial se consulta cuando lo solicites.</div><button type="button" id="activity-more" class="button" data-action="activity-more">Ver historial y comentarios</button></div>`;
+      $('#detail-content').insertAdjacentHTML('beforeend', renderDetailFeatures(detail));
+
+    const cached=state.activityCache[id];
+    if(cached&&cached.version===detail.activityVersion){state.activity=cached.history;state.activityCursor=cached.cursor;updateActivityView();}
+    $('#detail-content').setAttribute('aria-busy','false');
+    if (!$('#detail-dialog').open) $('#detail-dialog').showModal();
+  }
+
+  /**
+   * Consulta actividad paginada y descarta respuestas de detalles cerrados o reemplazados.
+   * @param {*} id - Identificador del registro.
+   * @param {number} detailLoad - Token de la apertura que originó la consulta de actividad.
+   * @param {boolean} reset - Descarta la página local anterior antes de incorporar la respuesta.
+   * @returns {Promise<void>} Incorporación de una página, si la apertura sigue vigente.
+   */
+  async function loadActivity(id, detailLoad, reset) {
+    if (state.activityBusy || detailLoad !== state.detailLoad || !$('#detail-dialog').open) return;
+    state.activityBusy = true;
+    const load = ++state.activityLoad;
+    const button = $('#activity-more'); if (button) {button.disabled = true;button.textContent='Cargando actividad…';}
+    try {
+      const page = await callServer('getCommitmentActivity', id, reset ? null : state.activityCursor);
+      if (load !== state.activityLoad || detailLoad !== state.detailLoad || !$('#detail-dialog').open) return;
+      state.activity = reset ? page.history : state.activity.concat(page.history);
+      state.activityCursor = page.nextCursor;
+      state.activityCache[id]={history:state.activity,cursor:state.activityCursor,version:page.activityVersion};
+      updateActivityView();
+    } catch (error) {
+      if (load !== state.activityLoad || detailLoad !== state.detailLoad || !$('#detail-dialog').open) return;
+      if (reset) $('#detail-comments').textContent = 'No se pudo cargar el seguimiento.';
+      $('#detail-history').innerHTML = `<p class="form-error" role="alert">${escapeHtml(error.message)}</p>`;
+      button.textContent = 'Reintentar actividad'; button.classList.remove('hidden');
+    } finally {
+      if (load === state.activityLoad && detailLoad === state.detailLoad) {state.activityBusy = false; if (button) button.disabled = false;}
+    }
+  }
+
+  /**
+   * Prepara un formulario nuevo con UUID estable para posibles reintentos.
+   */
+  function openCreate() {
+    if (!state.data) return;
+    fillCreateOptions();
+    const form=$('#create-form'); form.reset();
+    form.dataset.requestId = crypto.randomUUID();
+    $('#create-owner').value = state.data.user.id;
+    const date=new Date(); date.setDate(date.getDate()+7);
+    const localDate=new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,10);
+    form.elements.fecha_objetivo.value=localDate;
+    $('#create-dialog').showModal();
+  }

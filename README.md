@@ -1,11 +1,15 @@
-# SD Control — administración y automatización
+# SD Control — versión modular 3
+
+Servidor e interfaz separados por responsabilidades, con JSDoc en funciones, contratos de datos, errores por código, sincronización con revisiones y cachés reconstruibles. Se conserva Google Apps Script + Sheets.
+
+Guías: [arquitectura y módulos](docs/ARQUITECTURA.md), [contratos de operaciones](docs/CONTRATOS.md) e [instalación, entorno de pruebas y recuperación](docs/DESPLIEGUE.md).
 
 ## Actualización de la aplicación
 
 1. Conserva una copia del proyecto y del Sheet.
-2. Reemplaza **Code.gs, Index.html, Client.html y Styles.html** en Apps Script. Mantén los nombres HTML: Index, Client y Styles. No necesitas archivos adicionales de código.
+2. Reemplaza **Code.gs, Index.html, Client.html y Styles.html** y crea los nuevos módulos. **Ahora necesitas todos los 16 archivos .gs y 10 HTML de la raíz**, enumerados en project-files.json. No subas las carpetas tests, tools o docs. Sigue la [guía de instalación](docs/DESPLIEGUE.md).
 3. Guarda y actualiza la implementación para utilizar la nueva versión.
-4. Ingresa como ADMIN y abre **Administración → Preparar o actualizar tablas**. Se añaden los encabezados faltantes al final de las hojas existentes y se crea NOTIFICACIONES, conservando datos, IDs y columnas adicionales. Puedes repetir esta acción. Si hay encabezados duplicados, corrígelos primero.
+4. Ingresa como ADMIN y abre **Administración → Preparar o actualizar tablas**. Se añaden los encabezados faltantes al final de las hojas existentes y se crea NOTIFICACIONES, conservando datos, IDs y columnas adicionales. También se instalan los disparadores de edición y cambio estructural para detectar cambios directos en Sheets. Puedes repetir esta acción. Si hay encabezados duplicados, corrígelos primero.
 5. En Automatización y correos, marca **Activar ejecución cada hora** y, para enviar avisos, **Enviar notificaciones por correo**. Guarda la configuración con el administrador que se hará cargo. Google requiere autorizar correo y disparadores; completa el consentimiento si la implementación lo solicita.
 6. Usa **Ejecutar ahora** para generar las instancias programadas y entregar mensajes pendientes. Revisa el resultado y los errores en Administración.
 
@@ -75,11 +79,13 @@ El ID del Sheet y America/Lima se conservan. Los IDs anteriores siguen siendo v�
 
 ### Navegación local y sincronización
 
-Para instalar esta actualización, reemplaza juntos Code.gs, Client.html, Index.html y Styles.html, guarda y actualiza la implementación de Apps Script con una nueva versión. No requiere cambios adicionales al esquema de las hojas si ya instalaste las funciones anteriores.
+Para instalar esta actualización, carga todas las fuentes de project-files.json, guarda y publica una nueva versión. Esta reorganización no añade columnas nuevas de negocio; Preparar tablas conserva el esquema previo e instala los disparadores de detección de cambios.
 
 El inicio carga una instantánea de los compromisos autorizados, permisos, evidencias y aprobaciones. Abrir detalles o revisar aprobaciones utiliza esa memoria del navegador: cero llamadas al servidor. Historial y comentarios anteriores se consultan al pulsar Ver historial y comentarios, en páginas de 40 eventos. Las respuestas de ventanas cerradas se descartan.
 
-La web consulta cambios cada 60 segundos mientras está visible, al volver a la pestaña y al pulsar Actualizar. El servidor vuelve a verificar usuario y acceso, lee las tablas y devuelve únicamente detalles modificados, eliminaciones de acceso y metadatos modificados. Esta sincronización no es una suscripción en tiempo real. Los datos locales permanecen en memoria de la pestaña; no se persisten en localStorage.
+La web consulta cambios cada 60 segundos mientras está visible, al volver a la pestaña y al pulsar Actualizar. El servidor verifica usuario y tablas de acceso incluso cuando nada cambió. En ese caso omite la reconstrucción del resto: de 10 a 5 lecturas completas en la prueba administrativa. Si hay cambios, devuelve únicamente detalles modificados, eliminaciones de acceso y metadatos modificados. Esta sincronización no es una suscripción en tiempo real. Los datos locales permanecen en memoria de la pestaña; no se persisten en localStorage.
+
+Tipos, proyectos y catálogos pueden usar caché con invalidación por revisión; permisos no se guardan en caché. Un índice reconstruible permite conocer la última actividad sin recorrer HISTORIAL cada vez. Las escrituras propias y los disparadores de Sheets invalidan revisiones. Actualizar fuerza lectura completa, y ventanas periódicas de cinco minutos cubren cambios externos de scripts, APIs o fórmulas que no disparan eventos. La caché puede desaparecer antes de su vencimiento y la app continúa leyendo Sheets.
 
 Los formularios envían solamente campos modificados y la versión que se mostró al abrirlos. El servidor valida permisos y versión bajo bloqueo antes de escribir. Si alguien cambió el compromiso, rechaza el guardado y conserva el borrador; copia lo necesario antes de pulsar Descartar edición y actualizar detalle. Una operación devuelve el detalle afectado y actualiza la pantalla sin recargar toda la aplicación. Las escrituras agrupan campos por fila y eventos de auditoría por operación, conservando fórmulas y columnas adicionales.
 
@@ -90,11 +96,11 @@ Para medir el despliegue real, revisa los mensajes SD_PERF en los registros de e
 Con Node.js, desde esta carpeta:
 
 ```powershell
-node tests/server.cjs
-node tests/sync.cjs
-node tests/browser.cjs
+npm run check
+npm test
+npm run test:browser
 ```
 
-La prueba de navegador requiere Playwright y Chrome. SD_NODE_MODULES permite indicar el directorio de módulos que contiene Playwright. Las pruebas cubren permisos, conservación del esquema y datos, usuarios y duplicados, tipos, proyectos, delegaciones, reasignación, comentarios, anulación, aprobación/devolución, cierre directo, recurrencias y calendario, cuotas y reintentos de correo, formularios y respuestas fuera de orden.
+La prueba de navegador requiere Playwright y Chrome. SD_NODE_MODULES permite indicar el directorio de módulos que contiene Playwright. Las pruebas cubren permisos, conservación del esquema y datos, usuarios y duplicados, tipos, proyectos, delegaciones, reasignación, comentarios, anulación, aprobación/devolución, cierre directo, recurrencias y calendario, cuotas y reintentos de correo, formularios, respuestas fuera de orden, invalidación de caché, ediciones directas, revisión periódica y aislamiento del entorno de pruebas.
 
 Antes de operar, verifica con cuentas de prueba en el despliegue real: alta y acceso, reasignación, envío y devolución, cierre directo, anulación, generación recurrente repetida y recepción del correo. Los permisos de Workspace, consentimientos y entrega real no se verifican con servicios simulados.

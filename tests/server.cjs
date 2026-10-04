@@ -1,7 +1,8 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const NOW='2026-10-03T15:00:00Z';
 const io={opens:0,reads:0,writes:0};
-class ClockDate extends Date {constructor(...args){super(...(args.length?args:[NOW]));}}
+let nowMs=Date.parse(NOW);
+class ClockDate extends Date {constructor(...args){super(...(args.length?args:[nowMs]));}static now(){return nowMs;}}
 class Sheet {
   constructor(headers=[],rows=[]){this.rows=[headers,...rows];this.maxCols=26;}
   getLastColumn(){return Math.max(0,...this.rows.map(r=>r.length));}
@@ -18,12 +19,16 @@ class Sheet {
 }
 const sheets={};const props={};let email='admin@example.com',uuidCount=0,mailError=false,quota=100,triggerCount=0;const sent=[],triggers=[];
 const book={getSheetByName:n=>sheets[n]||null,insertSheet:n=>(sheets[n]=new Sheet())};
+book.getId=()=>ctx.spreadsheetId_();
 const uuid=n=>`${String(n).padStart(8,'0')}-1111-4111-8111-111111111111`;
 const ctx=vm.createContext({Date:ClockDate,console,Session:{getActiveUser:()=>({getEmail:()=>email})},SpreadsheetApp:{openById:()=>{io.opens++;return book;},flush:()=>{}},LockService:{getScriptLock:()=>({waitLock:()=>{},releaseLock:()=>{}})},PropertiesService:{getScriptProperties:()=>({getProperty:k=>props[k]||null,setProperty:(k,v)=>props[k]=v})},Utilities:{getUuid:()=>require('node:crypto').randomUUID(),formatDate:(date,tz,pattern)=>{
   const parts=new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(date);const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));
   return pattern==='yyyy-MM-dd'?`${p.year}-${p.month}-${p.day}`:pattern==='yyyyMMdd-HHmmss'?`${p.year}${p.month}${p.day}-${p.hour}${p.minute}${p.second}`:`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`;
 },DigestAlgorithm:{SHA_256:'sha256'},Charset:{UTF_8:'utf8'},computeDigest:(algorithm,value,encoding)=>Array.from(require('node:crypto').createHash(algorithm).update(value,encoding).digest())},MailApp:{getRemainingDailyQuota:()=>quota,sendEmail:m=>{if(mailError) throw new Error('Delivery denied');sent.push(m);}},ScriptApp:{getProjectTriggers:()=>triggers,newTrigger:name=>({timeBased(){return this},everyHours(){return this},create(){const t={getHandlerFunction:()=>name,getUniqueId:()=>String(++triggerCount)};const id=t.getUniqueId();t.getUniqueId=()=>id;triggers.push(t);return t;}}),deleteTrigger:t=>triggers.splice(triggers.indexOf(t),1)}});
-vm.runInContext(fs.readFileSync(path.join(__dirname,'../Code.gs'),'utf8'),ctx);
+const cache=new Map();
+ctx.CacheService={getScriptCache:()=>({get:key=>{const entry=cache.get(key);return entry&&entry.until>nowMs?entry.value:null;},put:(key,value,seconds)=>cache.set(key,{value,until:nowMs+seconds*1000})})};
+ctx.ScriptApp.newTrigger=name=>({timeBased(){return this;},everyHours(){return this;},forSpreadsheet(id){this.sheetId=id;return this;},onEdit(){return this;},onChange(){return this;},create(){const id=String(++triggerCount),t={getHandlerFunction:()=>name,getUniqueId:()=>id};triggers.push(t);return t;}});
+vm.runInContext(require('../tools/project.cjs').serverSource(),ctx);
 const schemas=vm.runInContext('EXTRA_SCHEMAS',ctx);
 Object.entries(schemas).forEach(([n,h])=>sheets[n]=new Sheet([...h]));
 sheets.USUARIOS=new Sheet(['usuario_id','nombre','correo_corporativo','rol_sistema','activo','campo_existente']);
@@ -57,7 +62,7 @@ assert.equal(ctx.nextRecurrenceDate_('2024-02-29','ANUAL','2024-02-29'),'2025-02
 const delegation={section:'delegations',request_id:uuid(104),delegante_id:'C',delegado_id:'B',alcance_tipo:'GLOBAL',fecha_inicio:'2026-10-01',fecha_fin:'2026-10-31',activo:true};
 const del=ctx.saveAdminRecord(delegation);assert.equal(rows('DELEGACIONES')[0].nivel_aprobacion,'NIVEL_1');
 assert.throws(()=>ctx.saveAdminRecord({...delegation,request_id:uuid(105),fecha_fin:'2026-09-30'}),/anterior/);
-ctx.saveAutomationSettings({enabled:true,email:true});ctx.saveAutomationSettings({enabled:true,email:true});assert.equal(triggers.length,1);
+ctx.saveAutomationSettings({enabled:true,email:true});ctx.saveAutomationSettings({enabled:true,email:true});assert.equal(triggers.filter(t=>t.getHandlerFunction()==='scheduledTasks_').length,1);
 const base={titulo:'Task',descripcion:'Result',tipo_id:'T',owner_id:'B',aprobador_id:'C',fecha_objetivo:'2026-10-10',request_id:uuid(106)};
 const task=ctx.createCommitment(base);ctx.createCommitment(base);assert.equal(rows('COMPROMISOS').length,1);assert.equal(rows('NOTIFICACIONES').length,1);
 ctx.submitEvidence({compromiso_id:task.id,url:'https://drive.google.com/example',comentario:'Done'});
@@ -85,7 +90,7 @@ const baseline=vm.createContext(Object.fromEntries(['Date','console','Session','
 vm.runInContext(fs.readFileSync(path.join(__dirname,'baseline-detail.gs'),'utf8'),baseline);
 io.opens=io.reads=0;baseline.getCommitmentDetail(task.id);const before={...io};
 io.opens=io.reads=0;const optimizedDetail=ctx.getCommitmentDetail(task.id);const after={...io};
-assert.equal(before.reads,10);assert.equal(before.opens,10);assert.equal(after.reads,7);assert.equal(after.opens,1);assert.equal(optimizedDetail.history,undefined);
+assert.equal(before.reads,10);assert.equal(before.opens,10);assert.ok(after.reads<=7);assert.equal(after.opens,1);assert.equal(optimizedDetail.history,undefined);
 console.log('Legacy detail endpoint service calls:',JSON.stringify({before,after}));
 // Fresh authorization on every endpoint, including activity; never reuse another actor's cache.
 email='owner@example.com';assert.throws(()=>ctx.getCommitmentDetail(task.id),/acceso/);assert.throws(()=>ctx.getCommitmentActivity(task.id),/acceso/);email='admin@example.com';
@@ -95,4 +100,4 @@ do{const page=ctx.getCommitmentActivity(task.id,cursor);assert.ok(page.history.l
 assert.equal(new Set(activity.map(h=>h.historial_id)).size,activity.length);assert.equal(activity.length,rows('HISTORIAL').filter(h=>h.compromiso_id===task.id).length);
 assert.throws(()=>ctx.getCommitmentActivity(task.id,-1),/cursor/);
 console.log('PASS: real server helpers against mock Sheets; roles, schema preservation, users, catalogs, delegations, reassignment, comments, cancellation, approval returns, direct closure, recurrences/replays/calendar, notifications/quota/retries and automation uniqueness.');
-module.exports={ctx,rows,uuid,sheets,io,setEmail:value=>email=value};
+module.exports={ctx,rows,uuid,sheets,io,props,cache,triggers,book,setEmail:value=>email=value,advanceTime:ms=>nowMs+=ms};

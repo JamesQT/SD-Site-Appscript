@@ -1,0 +1,10 @@
+# Artefactos locales y configuración de conexión personal.
+.clasp.json
+node_modules/
+*.zip
+tests/*.png
+tests/*.log
+coverage/
+.env
+.env.*
+*.tmp

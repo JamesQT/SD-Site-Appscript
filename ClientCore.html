@@ -1,0 +1,116 @@
+/** Estado y utilidades de interfaz compartidos dentro del cierre privado. */
+
+  const state = { data: null, admin: null, selectedApproval: null, toastTimer: null, approvalLoad: 0, deciding: false, detailLoad: 0, detailId: null, activityLoad: 0, activity: [], activityCursor: null, activityBusy: false, details: {}, activityCache: {}, metadataVersion: null, dataVersion: null, syncPromise: null, mutations: 0, epoch: 0, syncRequested: false, syncForceRequested: false };
+  const $ = (selector, root) => (root || document).querySelector(selector);
+  const $$ = (selector, root) => Array.from((root || document).querySelectorAll(selector));
+
+  /** Interpreta el indicador booleano recibido de Sheets. */
+  const booleanValue = v => v === true || v === 1 || String(v).toUpperCase() === 'TRUE';
+
+  /**
+   * Escapa texto antes de insertarlo en HTML para evitar interpretar entradas como etiquetas.
+   * @param {*} value - Valor que se interpreta o valida.
+   * @returns {string} Texto escapado para HTML.
+   */
+  function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+
+  /**
+   * Muestra un aviso breve y reemplaza el temporizador del aviso anterior.
+   * @param {*} message - Mensaje que se mostrará al usuario.
+   */
+  function showToast(message) {
+    const el = $('#toast'); el.textContent = message; el.classList.add('show');
+    clearTimeout(state.toastTimer); state.toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+  }
+
+  /**
+   * Presenta un error global sin eliminar los datos ya cargados.
+   * @param {*} error - Error de la operación.
+   */
+  function showError(error) {
+    const el = $('#global-error'); el.textContent = error && error.message ? error.message : String(error); el.classList.remove('hidden');
+  }
+
+  /**
+   * Oculta el error global al comenzar una nueva carga.
+   */
+  function clearError() { $('#global-error').classList.add('hidden'); }
+
+  /**
+   * Formatea una fecha de negocio para mostrarla en español.
+   * @param {*} value - Valor que se interpreta o valida.
+   * @returns {string} Etiqueta de fecha o guion si está vacía.
+   */
+  function dateLabel(value) {
+    if (!value) return '—';
+    const d = new Date(String(value).slice(0,10) + 'T12:00:00');
+    return isNaN(d.getTime()) ? escapeHtml(value) : d.toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'});
+  }
+
+  /**
+   * Traduce el código de estado a su etiqueta de interfaz.
+   * @param {*} value - Valor que se interpreta o valida.
+   * @returns {string} Etiqueta legible del estado.
+   */
+  function statusName(value) {
+    return ({PENDIENTE:'Pendiente',EN_CURSO:'En curso',BLOQUEADO:'Bloqueado',EN_APROBACION:'En aprobación',CERRADO:'Cerrado',ANULADO:'Anulado'})[value] || value || '—';
+  }
+
+  /**
+   * Devuelve la clase visual correspondiente al estado.
+   * @param {*} value - Valor que se interpreta o valida.
+   * @returns {string} Clase CSS del estado.
+   */
+  function statusClass(value) {
+    return ({PENDIENTE:'orange',EN_CURSO:'blue',BLOQUEADO:'red',EN_APROBACION:'purple',CERRADO:'green'})[value] || '';
+  }
+
+  /**
+   * Traduce la criticidad a una etiqueta legible.
+   * @param {*} value - Valor que se interpreta o valida.
+   * @returns {string} Etiqueta legible de criticidad.
+   */
+  function criticalityName(value) { return ({BAJA:'Baja',MEDIA:'Media',ALTA:'Alta',CRITICA:'Crítica'})[value] || value || '—'; }
+
+  /**
+   * Selecciona el color visual de la criticidad.
+   * @param {*} value - Valor que se interpreta o valida.
+   * @returns {string} Clase CSS de criticidad.
+   */
+  function criticalityClass(value) { return ({BAJA:'',MEDIA:'',ALTA:'orange',CRITICA:'red'})[value] || ''; }
+
+  /**
+   * Construye el mensaje de una colección vacía escapando su contenido.
+   * @param {*} message - Mensaje que se mostrará al usuario.
+   * @returns {string} Mensaje vacío en HTML escapado.
+   */
+  function emptyTable(message) { return `<div class="empty-state">${escapeHtml(message)}</div>`; }
+
+  /**
+   * Resuelve el nombre de una persona desde las referencias locales.
+   * @param {*} id - Identificador del registro.
+   * @returns {string} Nombre de persona o identificador de respaldo.
+   */
+  function personName(id) { const p=(state.data.people||[]).find(x=>x.usuario_id===id); return p?p.nombre:id||'—'; }
+
+  /**
+   * Convierte valores vacíos y booleanos a texto legible.
+   * @param {*} v - Valor original leído de la respuesta.
+   * @returns {string} Representación legible del valor.
+   */
+  function displayValue(v) { if (v===true) return 'Sí'; if (v===false) return 'No'; return v==null||v===''?'—':v; }
+
+  /**
+   * Cierra el diálogo que contiene al elemento indicado.
+   * @param {HTMLElement} target - Elemento situado dentro del diálogo que se cerrará.
+   */
+  function closeDialog(target) { const dialog=target.closest('dialog'); if (dialog && dialog.open) dialog.close(); }
+
+  /**
+   * Convierte los campos exitosos del formulario a un objeto de solicitud.
+   * @param {*} form - Formulario cuyo borrador debe conservarse.
+   * @returns {Object} Valores del formulario por nombre.
+   */
+  function formObject(form) { return Object.fromEntries(new FormData(form).entries()); }

@@ -1,0 +1,153 @@
+/** Formularios y vistas de administración, recurrencias y equipo. */
+
+  const adminDefinitions = {
+    users: {key:'usuario_id',title:'Usuario',fields:[['nombre','Nombre','text'],['correo_corporativo','Correo corporativo','email'],['rol_sistema','Rol','roles']]},
+    types: {key:'tipo_id',title:'Tipo de compromiso',fields:[['nombre','Nombre','text'],['descripcion','Descripción','textarea',false],['requiere_aprobacion','Requiere aprobación','boolean']]},
+    projects: {key:'proyecto_id',title:'Proyecto',fields:[['nombre','Nombre','text'],['descripcion','Descripción','textarea',false]]},
+    delegations: {key:'delegacion_id',title:'Delegación de nivel 1',fields:[['delegante_id','Delegante','people'],['delegado_id','Delegado','people'],['alcance_tipo','Alcance','scope'],['tipo_id','Tipo (para alcance Tipo)','types',false],['proyecto_id','Proyecto (para alcance Proyecto)','projects',false],['fecha_inicio','Fecha inicial','date'],['fecha_fin','Fecha final','date']]},
+    recurrences: {key:'recurrencia_id',title:'Plantilla recurrente',fields:[['nombre','Nombre','text'],['descripcion','Descripción','textarea',false],['tipo_id','Tipo','types'],['proyecto_id','Proyecto','projects',false],['owner_id','Responsable','people'],['aprobador_id','Aprobador','people',false],['nivel_aprobacion','Nivel de aprobación','levels'],['criticidad','Criticidad','criticality'],['frecuencia','Frecuencia','frequency'],['fecha_inicio','Fecha inicial','date'],['fecha_fin','Fecha final (opcional)','date',false],['proxima_generacion','Próxima generación','date'],['dias_plazo','Días para completar cada instancia','number']]}
+  };
+
+
+  /**
+   * Construye un campo administrativo según su definición y el registro actual.
+   * @param {*} field - Nombre de columna o definición de campo del formulario, según la función.
+   * @param {Object} record - Registro con nombres de columnas.
+   * @returns {string} Campo HTML del formulario.
+   */
+  function featureField(field, record) {
+    const [name,label,type,required=true]=field;
+    const value=record[name]==null?'':record[name];
+    const attrs=`name="${name}" ${required?'required':''}`;
+    let control;
+    const labels={RESPONSABLE:'Responsable',ADMIN:'Administrador',NIVEL_1:'Nivel 1',NIVEL_2:'Nivel 2',BAJA:'Baja',MEDIA:'Media',ALTA:'Alta',CRITICA:'Crítica',DIARIA:'Diaria',SEMANAL:'Semanal',MENSUAL:'Mensual',TRIMESTRAL:'Trimestral',ANUAL:'Anual'};
+    const optionsFor=values=>values.map(id=>[id,labels[id]||id]);
+    const enums={roles:optionsFor([...UI_CONFIG.roles].sort((a,b)=>a==='RESPONSABLE'?-1:b==='RESPONSABLE'?1:0)),boolean:[['true','Sí'],['false','No']],scope:[['GLOBAL','Global'],['TIPO','Tipo'],['PROYECTO','Proyecto']],levels:optionsFor(UI_CONFIG.levels),criticality:optionsFor(UI_CONFIG.criticality),frequency:optionsFor(UI_CONFIG.frequencies)};
+    let options=enums[type];
+    if(type==='people') options=state.data.people.map(p=>[p.usuario_id,p.nombre]);
+    if(type==='types') options=state.data.types.map(t=>[t.tipo_id,t.nombre]);
+    if(type==='projects') options=state.data.projects.map(p=>[p.proyecto_id,p.nombre]);
+    if(options) {
+      const selected=type==='boolean'?String(booleanValue(value)):String(value);
+      if(!enums[type] && value && !options.some(o=>o[0]===String(value))) options=[...options,[String(value),String(value)+' (inactivo)']];
+      control=`<select ${attrs}>${!enums[type]?'<option value="">Seleccionar…</option>':''}${options.map(([id,title])=>`<option value="${escapeHtml(id)}" ${id===selected?'selected':''}>${escapeHtml(title)}</option>`).join('')}</select>`;
+    } else if(type==='textarea') control=`<textarea ${attrs} rows="3" maxlength="2000">${escapeHtml(value)}</textarea>`;
+    else control=`<input ${attrs} type="${type}" value="${escapeHtml(type==='date'?String(value).slice(0,10):value)}" ${type==='number'?'min="0" max="3650" step="1"':type==='text'?'maxlength="160"':''}>`;
+    return `<label class="form-field ${type==='textarea'?'full':''}">${escapeHtml(label)}${control}</label>`;
+  }
+
+  /**
+   * Abre un formulario administrativo y conserva payload y UUID para el envío.
+   * @param {string} title - Título visible del diálogo.
+   * @param {string} action - Operación o evento que se ejecutará o auditará.
+   * @param {Object} fields - Campos a escribir o definición de campos del formulario.
+   * @param {Object} record - Registro con nombres de columnas.
+   * @param {Object} extra - Datos adicionales del payload o de la respuesta.
+   */
+  function showFeatureForm(title,action,fields,record={},extra={}) {
+    if ($('#feature-dialog').open) return;
+    const form=$('#feature-form');form.reset();form.dataset.busy='false';
+    form.dataset.action=action;form.dataset.payload=JSON.stringify(extra);form.dataset.requestId=crypto.randomUUID();
+    $('#feature-title').textContent=title;
+    $('#feature-fields').innerHTML=fields.map(f=>featureField(f,record)).join('');
+    $('#feature-error').textContent='';$('#feature-save').disabled=false;
+    $('#feature-dialog').showModal();
+  }
+
+  /**
+   * Carga los datos administrativos y prepara el formulario del registro seleccionado.
+   * @param {string} section - Sección administrativa: users, types, projects, delegations o recurrences.
+   * @param {*} id - Identificador del registro.
+   * @returns {Promise<void>} Preparación del diálogo administrativo.
+   */
+  async function openAdminEditor(section,id) {
+    if(!state.data.isAdmin) return;
+    if(!state.admin) state.admin=await callServer('getAdminData');
+    const def=adminDefinitions[section];if(!def) return;
+    const record=id?(state.admin[section]||[]).find(r=>String(r[def.key])===id):null;
+    if(id&&!record) throw new Error('El registro ya no existe.');
+    const today=new Date().toLocaleDateString('en-CA',{timeZone:'America/Lima'});
+    const defaults={activo:true,requiere_aprobacion:true,rol_sistema:'RESPONSABLE',nivel_aprobacion:'NIVEL_1',criticidad:'MEDIA',frecuencia:'SEMANAL',fecha_inicio:today,proxima_generacion:today,dias_plazo:7};
+    const values=Object.assign(defaults,record||{});
+    if (record && !values.aprobador_id && record.aprobador_actual_id) values.aprobador_id=record.aprobador_actual_id;
+    showFeatureForm((record?'Editar ':'Nuevo ')+def.title,'saveAdminRecord',[...def.fields,['activo','Activo','boolean']],values,{section:section,id:id||''});
+  }
+
+  /**
+   * Representa la sección administrativa con la información autorizada del servidor.
+   * @returns {Promise<void>} Carga y representación de la sección administrativa.
+   */
+  async function renderAdmin() {
+    if(!state.admin) state.admin=await callServer('getAdminData');
+    const key=$('#admin-section').value,rows=state.admin[key]||[],def=adminDefinitions[key];
+    $('#admin-new').classList.toggle('hidden',!def);
+    $('#automation-enabled').checked=!!state.admin.automation.enabled;
+    $('#automation-email').checked=!!state.admin.automation.email;
+    $('#automation-status').textContent=`${state.admin.automation.enabled?'Automatización horaria activa':'Automatización desactivada'} · Correos pendientes: ${state.admin.automation.pending} · Para revisar: ${state.admin.automation.failed}${state.admin.automation.lastRun?' · Última ejecución: '+state.admin.automation.lastRun:''}${state.admin.automation.lastError?' · '+state.admin.automation.lastError:''}`;
+    if(!rows.length) {$('#admin-table').innerHTML=emptyTable('No hay registros para esta vista.');return;}
+    const keys=Object.keys(rows[0]).filter(k=>k!=='_row');
+    $('#admin-table').innerHTML=`<div class="table-wrap"><table><thead><tr>${def||key==='notifications'?'<th>Acción</th>':''}${keys.map(k=>`<th>${escapeHtml(k.replace(/_/g,' '))}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${def?`<td><button class="button" data-action="edit-admin" data-section="${key}" data-record="${escapeHtml(r[def.key])}">Editar</button></td>`:key==='notifications'?`<td>${['ERROR','ENVIANDO'].includes(r.estado)?`<button class="button" data-action="retry-notification" data-record="${escapeHtml(r.notificacion_id)}">Reintentar</button>`:''}</td>`:''}${keys.map(k=>`<td>${escapeHtml(displayValue(r[k]))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  }
+
+  /**
+   * Invalida administración y solicita sincronización tras un cambio administrativo.
+   * @returns {Promise<void>} Invalidación y actualización de administración.
+   */
+  async function refreshFeatures() {
+    state.admin = null;
+    await synchronize();
+    if($('#view-admin').classList.contains('active')) await renderAdmin();
+  }
+
+  /**
+   * Despacha acciones administrativas, reasignación y anulación desde la interfaz.
+   * @param {HTMLElement} button - Botón cuyo data-action y atributos determinan la operación.
+   * @returns {Promise<void>} Acción administrativa solicitada.
+   */
+  async function handleFeatureAction(button) {
+    const action=button.dataset.action;
+    if(action==='edit-admin') return openAdminEditor(button.dataset.section,button.dataset.record);
+    if(action==='new-admin') return openAdminEditor($('#admin-section').value);
+    if(action==='new-recurrence') return openAdminEditor('recurrences');
+    if(action==='manage-recurrences') {$('#admin-section').value='recurrences';return setView('admin');}
+    if(action==='reassign') {
+      const displayedVersion=$('#detail-content').dataset.version;
+      closeDialog(button);
+      const c=state.data.commitments.find(c=>c.compromiso_id===button.dataset.id);
+      return showFeatureForm('Reasignar compromiso','reassignCommitment',[['owner_id','Responsable','people'],['aprobador_id','Aprobador','people',booleanValue(c.requiere_aprobacion)],['motivo','Motivo','textarea']],{owner_id:c.owner_id,aprobador_id:c.aprobador_actual_id},{compromiso_id:c.compromiso_id,expected_version:displayedVersion});
+    }
+    if(action==='cancel-commitment') {
+      const displayedVersion=$('#detail-content').dataset.version;
+      closeDialog(button);
+      return showFeatureForm('Anular compromiso','cancelCommitment',[['motivo','Motivo de anulación','textarea']],{}, {compromiso_id:button.dataset.id,expected_version:displayedVersion});
+    }
+    if(action==='retry-notification') {
+      return showFeatureForm('Reintentar correo','retryNotification',[['motivo','Motivo (si figura Enviando, comprueba antes si el correo ya llegó)','textarea']],{}, {notificacion_id:button.dataset.record});
+    }
+    if(['initialize-features','run-operations'].includes(action)) {
+      if(button.disabled) return;button.disabled=true;
+      try {
+        const result=await callServer(action==='initialize-features'?'initializeFeatures':'runOperationsNow');
+        if(result.errors&&result.errors.length) showError(new Error(result.errors.join('\n')));
+        showToast(action==='initialize-features'?'Funciones preparadas.':`Generados: ${result.generated}. Correos enviados: ${result.sent}.`);
+        await refreshFeatures();
+        if(result.errors&&result.errors.length) showError(new Error(result.errors.join('\n')));
+      } finally {button.disabled=false;}
+    }
+  }
+
+  /**
+   * Representa las plantillas recurrentes visibles para administración.
+   */
+  function renderRecurrences() {
+    const rows = state.data.recurrences;
+    $('#recurrences-table').innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Plantilla</th><th>Frecuencia</th><th>Responsable</th><th>Próxima generación</th><th>Criticidad</th></tr></thead><tbody>${rows.map(r=>`<tr><td><span class="task-title">${escapeHtml(r.nombre)}</span><span class="task-sub">${escapeHtml(r.descripcion||'')}</span></td><td>${escapeHtml(r.frecuencia)}</td><td>${escapeHtml(personName(r.owner_id))}</td><td>${dateLabel(r.proxima_generacion)}</td><td><span class="pill ${criticalityClass(r.criticidad)}">${criticalityName(r.criticidad)}</span></td></tr>`).join('')}</tbody></table></div>` : emptyTable('No hay plantillas recurrentes activas.');
+  }
+
+  /**
+   * Representa los indicadores del equipo para usuarios administradores.
+   */
+  function renderTeam() {
+    const rows=state.data.team;
+    $('#team-grid').innerHTML = rows.length ? rows.map(p=>`<article class="team-card"><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.role)}</p><div class="team-metrics"><span><strong>${p.open}</strong>Abiertos</span><span><strong>${p.overdue}</strong>Vencidos</span><span><strong>${p.approvals}</strong>Por aprobar</span></div></article>`).join('') : emptyTable('No hay usuarios activos.');
+  }

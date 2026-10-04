@@ -1,0 +1,43 @@
+/** Bandeja y revisión de aprobaciones desde memoria local. */
+
+  /**
+   * Actualiza la bandeja y conserva la revisión solo mientras su versión siga vigente.
+   */
+  function renderApprovals() {
+
+    const list = state.data.approvals;
+    $('#approval-count').textContent = list.length;
+    $('#approval-list').innerHTML = list.length ? list.map(a=>`<div class="list-row"><button data-action="open-approval" data-id="${escapeHtml(a.aprobacion_id)}"><strong>${escapeHtml(a.compromiso.titulo)}</strong><small>${escapeHtml(a.compromiso.owner_name)} · ${dateLabel(a.compromiso.fecha_objetivo)} · ${criticalityName(a.compromiso.criticidad)}</small></button><span class="pill purple">Pendiente</span></div>`).join('') : '<div class="empty-state">No tienes aprobaciones pendientes.</div>';
+    if (state.selectedApproval) {
+      const current=list.find(a=>a.aprobacion_id===state.selectedApproval.aprobacion_id);
+      if (!current || current._version!==state.selectedApproval._version || current.compromiso._version!==state.selectedApproval.compromiso._version) {
+        const id=state.selectedApproval.aprobacion_id;
+        state.selectedApproval=null;$$('#approval-detail [data-action="decide"]').forEach(b=>b.disabled=true);
+        if (!$('#approval-refresh-note')) $('#approval-detail').insertAdjacentHTML('afterbegin', `<p id="approval-refresh-note" class="form-error">La solicitud cambió. <button class="text-button" data-action="reload-approval" data-id="${escapeHtml(id)}">Actualizar revisión</button></p>`);
+      }
+    } else if (!$('#approval-detail textarea')) $('#approval-detail').textContent='Selecciona una aprobación para revisar.';
+
+  }
+
+  /**
+   * Abre una aprobación desde memoria local y fija las versiones que serán enviadas.
+   * @param {*} id - Identificador del registro.
+   * @param {string} draft - Comentario de revisión que se conservará al actualizar la aprobación.
+   */
+  function openApproval(id, draft) {
+    const a = state.data.approvals.find(x=>x.aprobacion_id===id);
+    if (!a) return;
+    const load = ++state.approvalLoad;
+    state.selectedApproval = null;
+    $('#approval-detail').textContent = 'Cargando solicitud…';
+    try {
+      const detail = state.details[a.compromiso_id];
+      if (!detail) throw new Error('Actualiza los datos para revisar este compromiso.');
+      if (load !== state.approvalLoad) return;
+      state.selectedApproval = a;
+      const c = detail.commitment;
+      const ev = detail.evidence.filter(e => e.aprobacion_id === a.aprobacion_id).slice(-1)[0];
+      $('#approval-detail').innerHTML = `<div class="panel-head"><h2>Revisión de cierre</h2><span class="badge">${escapeHtml(a.aprobacion_id)}</span></div><div class="detail-grid"><div class="detail-row"><span>Compromiso</span><strong>${escapeHtml(c.titulo)}</strong></div><div class="detail-row"><span>Responsable</span><span>${escapeHtml(c.owner_name)}</span></div><div class="detail-row"><span>Fecha objetivo</span><span>${dateLabel(c.fecha_objetivo)}</span></div><div class="detail-row"><span>Descripción</span><span>${escapeHtml(c.descripcion || '—')}</span></div><div class="detail-row"><span>Evidencia</span>${ev?`<a href="${escapeHtml(ev.url_drive)}" target="_blank" rel="noopener">${escapeHtml(ev.nombre_archivo || 'Abrir enlace')} ↗</a>`:'<span>Sin enlace</span>'}</div></div><div class="detail-section"><label class="form-field">Comentario para aprobar o devolver<textarea id="decision-comment" rows="3" maxlength="2000" placeholder="Obligatorio al devolver"></textarea></label><div class="dialog-actions"><button class="button danger" data-action="decide" data-decision="DEVOLVER">Devolver</button><button class="button primary" data-action="decide" data-decision="APROBAR">Aprobar y cerrar</button></div></div>`;
+      if (draft) $('#decision-comment').value = draft;
+    } catch (error) { showToast(error.message); }
+  }

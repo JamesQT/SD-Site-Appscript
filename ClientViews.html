@@ -1,0 +1,146 @@
+/** Navegación y representación de listas, filtros e indicadores. */
+
+  /**
+   * Actualiza las vistas generales respetando los formularios que permanecen abiertos.
+   */
+  function renderApp() {
+    const environmentBadge=$('#environment-badge');
+    environmentBadge.classList.toggle('hidden',UI_CONFIG.environment!=='PRUEBAS');
+    const d = state.data, u = d.user;
+    $('#user-name').textContent = u.name;
+    $('#user-role').textContent = u.role === 'ADMIN' ? 'Líder / Administrador' : 'Responsable';
+    $('#user-avatar').textContent = (u.name || 'SD').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();
+    $('#welcome').textContent = 'Hola, ' + u.name.split(' ')[0];
+    $('#stat-open').textContent = d.counts.open;
+    $('#stat-overdue').textContent = d.counts.overdue;
+    $('#stat-soon').textContent = d.counts.dueSoon;
+    $('#stat-approvals').textContent = d.counts.approvals;
+    $('#approval-badge').textContent = d.counts.approvals;
+    $$('.admin-only').forEach(el => el.classList.toggle('hidden', !d.isAdmin));
+    if (!$('#create-dialog').open) fillCreateOptions(); renderDashboard(); renderCommitmentTables(); renderApprovals();
+    if (d.isAdmin) { renderRecurrences(); renderTeam(); }
+  }
+
+  /**
+   * Completa opciones de creación preservando filtros seleccionados.
+   */
+  function fillCreateOptions() {
+    const d = state.data, selectedType = $('#filter-type').value;
+    $('#create-type').innerHTML = d.types.map(t=>`<option value="${escapeHtml(t.tipo_id)}">${escapeHtml(t.nombre)}</option>`).join('');
+    $('#create-project').innerHTML = '<option value="">Sin proyecto</option>' + d.projects.map(p=>`<option value="${escapeHtml(p.proyecto_id)}">${escapeHtml(p.nombre)}</option>`).join('');
+    const people = d.people.length ? d.people : [{usuario_id:d.user.id,nombre:d.user.name,rol_sistema:d.user.role}];
+    $('#create-owner').innerHTML = people.map(p=>`<option value="${escapeHtml(p.usuario_id)}">${escapeHtml(p.nombre)}</option>`).join('');
+    $('#create-approver').innerHTML = people.map(p=>`<option value="${escapeHtml(p.usuario_id)}">${escapeHtml(p.nombre)}</option>`).join('');
+    $('#filter-type').innerHTML = '<option value="">Todos los tipos</option>' + d.types.map(t=>`<option value="${escapeHtml(t.tipo_id)}">${escapeHtml(t.nombre)}</option>`).join('');
+    $('#filter-type').value = selectedType;
+    if (d.user.role !== 'ADMIN') $('#create-owner').disabled = true;
+    else $('#create-owner').disabled = false;
+  }
+
+  /**
+   * Representa indicadores y compromisos relevantes para el inicio.
+   */
+  function renderDashboard() {
+    const rows = state.data.commitments.filter(c=>['PENDIENTE','EN_CURSO','BLOQUEADO','EN_APROBACION'].includes(c.estado)).slice(0,6);
+    $('#dashboard-table').innerHTML = commitmentTable(rows, false);
+    const inbox = state.data.approvals.slice(0,5);
+    $('#dashboard-inbox').innerHTML = inbox.length ? inbox.map(a=>`<div class="list-row"><button data-action="open-approval" data-id="${escapeHtml(a.aprobacion_id)}"><strong>${escapeHtml(a.compromiso.titulo)}</strong><small>${escapeHtml(a.compromiso.owner_name)} · vence ${dateLabel(a.compromiso.fecha_objetivo)}</small></button><span class="pill purple">Revisar</span></div>`).join('') : '<div class="empty-state">No tienes aprobaciones pendientes.</div>';
+  }
+
+  /**
+   * Construye filas de compromisos escapando los datos para su inserción en HTML.
+   * @param {*} rows - Colección de registros.
+   * @param {boolean} includeType - Incluye la columna de tipo en la tabla.
+   * @returns {string} Tabla HTML completa o estado vacío.
+   */
+  function commitmentTable(rows, includeType) {
+    if (!rows.length) return emptyTable('No hay compromisos para mostrar.');
+    return `<div class="table-wrap"><table><thead><tr><th>Compromiso</th><th>Responsable</th>${includeType?'<th>Tipo</th>':''}<th>Fecha objetivo</th><th>Estado</th><th>Criticidad</th></tr></thead><tbody>${rows.map(c=>commitmentRow(c,includeType)).join('')}</tbody></table></div>`;
+  }
+
+  /**
+   * Construye una fila de compromiso para creación o actualización puntual.
+   * @param {Object} c - Compromiso decorado por el servidor.
+   * @param {boolean} includeType - Incluye la columna de tipo.
+   * @returns {string} Fila HTML con contenido escapado.
+   */
+  function commitmentRow(c,includeType) {
+    return `<tr data-id="${escapeHtml(c.compromiso_id)}" data-signature="${escapeHtml(commitmentRowSignature(c))}"><td><span class="task-title">${escapeHtml(c.titulo)}</span><span class="task-sub">${escapeHtml(c.compromiso_id)} · ${escapeHtml(c.project_name)}</span></td><td>${escapeHtml(c.owner_name)}</td>${includeType?`<td>${escapeHtml(c.type_name)}</td>`:''}<td>${dateLabel(c.fecha_objetivo)}</td><td><span class="pill ${statusClass(c.estado)}">${statusName(c.estado)}</span></td><td><span class="pill ${criticalityClass(c.criticidad)}">${criticalityName(c.criticidad)}</span></td></tr>`;
+  }
+
+  /**
+   * Calcula una huella de los campos visibles de una fila, sin incluir detalles ocultos.
+   * @param {Object} c - Compromiso decorado.
+   * @returns {string} Representación estable de las celdas visibles.
+   */
+  function commitmentRowSignature(c) {
+    return JSON.stringify(['compromiso_id','titulo','owner_name','type_name','fecha_objetivo','estado','criticidad','project_name'].map(key=>c[key]));
+  }
+
+  /**
+   * Conserva filas existentes y reemplaza solo celdas cuyo contenido visible cambió.
+   * Mantiene el contenedor de desplazamiento y reaplica filtros fuera de esta función.
+   * @param {string} selector - Contenedor de tabla.
+   * @param {Array<Object>} rows - Compromisos en orden de presentación.
+   * @param {boolean} includeType - Incluye la columna de tipo.
+   */
+  function reconcileCommitmentTable(selector,rows,includeType) {
+    const container=$(selector),body=$('tbody',container);
+    if(!body || !rows.length) {container.innerHTML=commitmentTable(rows,includeType);return;}
+    const existing=new Map($$('tr[data-id]',body).map(row=>[row.dataset.id,row]));
+    rows.forEach((c,index)=>{
+      const signature=commitmentRowSignature(c),id=c.compromiso_id;
+      let row=existing.get(id);
+      if(!row || row.dataset.signature!==signature) {
+        const template=document.createElement('template');template.innerHTML=commitmentRow(c,includeType);
+        const fresh=template.content.firstElementChild;
+        if(row) row.innerHTML=fresh.innerHTML;
+        else row=fresh;
+        row.dataset.signature=signature;
+      }
+      const position=body.children[index];
+      if(position!==row) body.insertBefore(row,position||null);
+      existing.delete(id);
+    });
+    existing.forEach(row=>row.remove());
+  }
+
+  /**
+   * Actualiza las tablas principales y aplica sus filtros.
+   */
+  function renderCommitmentTables() {
+    reconcileCommitmentTable('#commitments-table',state.data.commitments,true);
+    reconcileCommitmentTable('#tasks-table',state.data.myTasks,true);
+    applyFilters();
+  }
+
+  /**
+   * Filtra las listas locales sin consultar el servidor.
+   */
+  function applyFilters() {
+    const byId=new Map(state.data.commitments.map(c=>[c.compromiso_id,c]));
+    const q = ($('#commitment-search').value || '').toLowerCase();
+    const status = $('#filter-status').value, type = $('#filter-type').value;
+    $$('#commitments-table tbody tr').forEach(row=>{
+      const c = byId.get(row.dataset.id);
+      row.classList.toggle('hidden', !c || (!!q && !`${c.titulo} ${c.compromiso_id} ${c.owner_name}`.toLowerCase().includes(q)) || (!!status && c.estado!==status) || (!!type && c.tipo_id!==type));
+    });
+    const taskStatus = $('#task-status-filter').value;
+    $$('#tasks-table tbody tr').forEach(row=>{
+      const c = byId.get(row.dataset.id);
+      row.classList.toggle('hidden', !c || (!!taskStatus && c.estado!==taskStatus));
+    });
+  }
+
+  /**
+   * Activa la vista solicitada y carga administración cuando corresponde.
+   * @param {*} name - Nombre de operación, vista o referencia.
+   */
+  function setView(name) {
+    if (!state.data) return;
+    if (['recurrentes','equipo','admin'].includes(name) && !state.data.isAdmin) return showToast('Vista disponible para el perfil ADMIN.');
+    $$('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+name));
+    $$('.nav-item[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));
+    $('#breadcrumb-current').textContent=({inicio:'Inicio',compromisos:'Compromisos','mis-tareas':'Mis tareas',aprobaciones:'Aprobaciones',recurrentes:'Línea base',equipo:'Equipo',admin:'Administración'})[name]||name;
+    if (name==='admin') renderAdmin().catch(showError);
+  }

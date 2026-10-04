@@ -1,0 +1,146 @@
+/** Comunicación, instantánea local y sincronización sin perder borradores. */
+
+  /**
+   * Invoca una operación permitida de Apps Script y mide la comunicación completa.
+   * @param {*} name - Nombre de operación, vista o referencia.
+   * @param {...*} args - Argumentos de la operación google.script.run.
+   * @returns {Promise<*>} Respuesta del servidor o rechazo con code y message.
+   */
+  function callServer(name, ...args) {
+    const allowed=['getAppData','syncAppData','getCommitmentActivity','getAdminData','createCommitment','updateCommitment','submitEvidence','decideApproval','reassignCommitment','cancelCommitment','addCommitmentComment','saveAdminRecord','initializeFeatures','saveAutomationSettings','runOperationsNow','retryNotification'];
+    if(!allowed.includes(name)) return Promise.reject(new Error('Operación no permitida.'));
+    const started = performance.now();
+    const report = outcome => {
+      console.info('SD_RPC', {endpoint:name, outcome:outcome, durationMs:Math.round(performance.now()-started)});
+    };
+    return new Promise((resolve, reject) => {
+      google.script.run.withSuccessHandler(value => {report('ok'); resolve(value);}).withFailureHandler(err => {
+        report('error');
+        const raw=err && err.message ? err.message : String(err);
+        const match=raw.match(/^(AUTH|FORBIDDEN|VALIDATION|CONFLICT|CONFIGURATION):\s*/);
+        const error=new Error(match ? raw.slice(match[0].length) : raw);
+        error.code=match ? match[1] : 'TECHNICAL';reject(error);
+      })[name](...args);
+    });
+  }
+
+  /**
+   * Deriva listas, tareas e indicadores a partir de los detalles locales autorizados.
+   */
+  function rebuildLocalData() {
+    const details=Object.values(state.details);
+    state.data.commitments=details.map(d=>d.commitment);
+    state.data.myTasks=details.filter(d=>d.isTask).map(d=>d.commitment);
+    state.data.approvals=details.flatMap(d=>d.approvals.filter(a=>a.canDecide).map(a=>Object.assign({},a,{compromiso:d.commitment})));
+    const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Lima',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    const end=new Date(today+'T12:00:00Z');end.setUTCDate(end.getUTCDate()+7);const soon=end.toISOString().slice(0,10);
+    const open=state.data.commitments.filter(c=>['PENDIENTE','EN_CURSO','BLOQUEADO'].includes(c.estado));
+    state.data.counts={open:open.length,overdue:open.filter(c=>c.fecha_objetivo&&c.fecha_objetivo<today).length,dueSoon:open.filter(c=>c.fecha_objetivo>=today&&c.fecha_objetivo<=soon).length,blocked:open.filter(c=>c.estado==='BLOQUEADO').length,approvals:state.data.approvals.length,myTasks:state.data.myTasks.length};
+    if(state.data.isAdmin)state.data.team=state.data.people.map(u=>({id:u.usuario_id,name:u.nombre,role:u.rol_sistema,open:open.filter(c=>c.owner_id===u.usuario_id).length,overdue:open.filter(c=>c.owner_id===u.usuario_id&&c.fecha_objetivo&&c.fecha_objetivo<today).length,approvals:details.reduce((n,d)=>n+d.approvals.filter(a=>a.estado==='PENDIENTE'&&a.aprobador_asignado_id===u.usuario_id).length,0)}));
+  }
+
+  /**
+   * Actualiza el indicador de sincronización de la barra superior.
+   * @param {*} text - Texto del indicador.
+   */
+  function setSyncStatus(text) { $('#sync-status').textContent=text; }
+
+  /**
+   * Advierte de cambios recientes sin reemplazar el borrador del detalle abierto.
+   * @param {*} id - Identificador del registro.
+   */
+  function notifyOpenDetailChanged(id) {
+    if(state.detailId===id&&$('#detail-dialog').open) {
+      const note=$('#detail-update-note');if(note){note.textContent='Hay cambios recientes. ';note.classList.remove('hidden');note.insertAdjacentHTML('beforeend','<button type="button" class="text-button" data-action="reload-local-detail">Descartar edición y actualizar detalle</button>');}
+    }
+  }
+
+  /**
+   * Aplica la respuesta puntual de una escritura sin recargar toda la aplicación.
+   * @param {Object} result - Respuesta autorizada del servidor.
+   */
+  function applyMutation(result) {
+    if(result.user){state.data.user=result.user;state.data.isAdmin=result.user.role==='ADMIN';}
+    if(result.remove){delete state.details[result.id];delete state.activityCache[result.id];if(state.detailId===result.id)$('#detail-dialog').close();}
+    if(result.detail){state.details[result.id]=result.detail;}
+    rebuildLocalData();renderApp();
+    setSyncStatus('Cambio guardado · '+new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}));
+  }
+
+  /**
+   * Consulta cambios sin solapar peticiones ni aplicar respuestas anteriores a una escritura.
+   * @param {boolean} force - Omite cachés y exige lectura completa al pulsar Actualizar.
+   * @returns {Promise<void>|undefined} Sincronización completada o diferida hasta terminar la escritura.
+   */
+  async function synchronize(force=false) {
+    if(!state.data)return;
+    if(force)state.syncForceRequested=true;
+    if(state.mutations){state.syncRequested=true;return;}
+    if(state.syncPromise){if(force)state.syncRequested=true;return state.syncPromise;}
+    const epoch=state.epoch,versions=Object.fromEntries(Object.entries(state.details).map(([id,d])=>[id,d._syncVersion]));
+    setSyncStatus('Sincronizando…');$('#sync-now').disabled=true;
+    const forceRefresh=state.syncForceRequested;state.syncForceRequested=false;
+    state.syncPromise=(async()=>{
+      try {
+        const delta=await callServer('syncAppData',{versions:versions,metadataVersion:state.metadataVersion,dataVersion:state.dataVersion,force:forceRefresh});
+        if(epoch!==state.epoch){state.syncRequested=true;return;}
+        delta.removed.forEach(id=>{delete state.details[id];delete state.activityCache[id];if(state.detailId===id)$('#detail-dialog').close();});
+        delta.details.forEach(d=>{
+          const id=d.commitment.compromiso_id,old=state.details[id];
+          state.details[id]=d;
+          if(state.activityCache[id]&&state.activityCache[id].version!==d.activityVersion)delete state.activityCache[id];
+          if(old&&old._syncVersion!==d._syncVersion)notifyOpenDetailChanged(id);
+        });
+        if(delta.metadata){Object.assign(state.data,delta.metadata);state.admin=null;}
+        state.metadataVersion=delta.metadataVersion;
+        state.dataVersion=delta.dataVersion;
+        if(delta.details.length||delta.removed.length||delta.metadata){rebuildLocalData();renderApp();}
+        if(!state.data.isAdmin&&['admin','equipo','recurrentes'].some(v=>$('#view-'+v).classList.contains('active')))setView('inicio');
+        setSyncStatus('Actualizado · '+new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}));
+      } catch(error) {
+        setSyncStatus('Sincronización pendiente');
+        if(error.code==='AUTH'||/no está activo en USUARIOS|Google no devolvió tu correo/.test(error.message)) {
+          state.details={};state.activityCache={};state.data=null;
+          $$('dialog[open]').forEach(d=>d.close());$$('.view').forEach(v=>v.classList.remove('active'));
+          $('#user-name').textContent='Sin acceso';$('#user-role').textContent='';$('#user-avatar').textContent='';
+          showError(error);
+        }
+      } finally {
+        state.syncPromise=null;$('#sync-now').disabled=false;
+        if(state.syncRequested&&!state.mutations){state.syncRequested=false;setTimeout(()=>synchronize(),0);}
+      }
+    })();return state.syncPromise;
+  }
+
+  /**
+   * Muestra el error y conserva el formulario; solicita actualización ante un conflicto.
+   * @param {*} error - Error de la operación.
+   * @param {*} form - Formulario cuyo borrador debe conservarse.
+   */
+  function mutationError(error,form) {
+    const message=error.message.replace(/^CONFLICT:\s*/,'');
+    if(form&&form.id==='update-form'){$('#detail-save-error').textContent=message;notifyOpenDetailChanged(state.detailId);}
+    else showToast(message);
+    if(error.code==='CONFLICT'||error.message.startsWith('CONFLICT:'))state.syncRequested=true;
+  }
+
+  /**
+   * Carga la instantánea inicial y prepara las vistas y el estado de sincronización.
+   * @returns {Promise<void>} Carga inicial y actualización de vistas.
+   */
+  async function refresh() {
+    clearError(); $('#loading').classList.remove('hidden');
+    try {
+      state.data = await callServer('getAppData');
+      state.details = Object.fromEntries(state.data.details.map(d => [d.commitment.compromiso_id, d]));
+      state.metadataVersion = state.data.metadataVersion;
+      state.dataVersion = state.data.dataVersion;
+      state.admin = null;
+      rebuildLocalData();
+      setSyncStatus('Datos cargados');
+      $('#loading').classList.add('hidden');
+      renderApp();
+    } catch (error) {
+      $('#loading').classList.add('hidden'); showError(error);
+    }
+  }

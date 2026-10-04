@@ -1,0 +1,62 @@
+# Contratos de operaciones
+
+Las fechas de negocio usan `YYYY-MM-DD`, con validación del calendario. Los IDs se conservan como cadenas; no deben editarse manualmente. Las respuestas no contienen objetos Date: el repositorio los normaliza antes de enviarlos al navegador. `_row` es una referencia interna de posición y no concede permiso de escritura.
+
+## Lectura y sincronización
+
+| Operación | Entrada | Resultado |
+|---|---|---|
+| getAppData | Sin argumentos | AppSnapshot: usuario, detalles autorizados, listas compatibles, referencias, indicadores y versiones. |
+| syncAppData | `{versions, metadataVersion, dataVersion, force?}` | SyncDelta: `details`, `removed`, `metadata`, `metadataVersion`, `dataVersion`. |
+| getCommitmentDetail | `compromiso_id` | Compromiso, colaboradores, aprobaciones y evidencias autorizados. La nueva interfaz abre desde memoria local. |
+| getCommitmentActivity | `compromiso_id, beforeRow?` | `{history, nextCursor, activityVersion}`; hasta 40 eventos, nuevos primero. |
+| getAdminData | Sin argumentos | Tablas administrativas y estado de automatización; exige ADMIN. |
+
+`versions` es un objeto con ID de compromiso como clave y `_syncVersion` como valor. Tiene un máximo de 20.000 claves. `force: true` evita el atajo de sincronización y fuerza catálogos y última actividad frescos. Una colección vacía de cambios y `metadata: null` permite conservar las vistas actuales. `removed` incluye IDs del cliente que ya no son visibles, incluso si fueron enviados manualmente; el cliente no puede solicitar acceso inventando un ID.
+
+`nextCursor` es una fila exclusiva. Para cargar otra página, se envía el cursor anterior; `null` indica fin. `activityVersion` corresponde al evento más reciente del compromiso, también al consultar páginas antiguas. Si el historial se reordena manualmente, conviene volver a cargarlo desde el comienzo.
+
+## Escrituras de compromisos
+
+| Operación | Datos requeridos | Condiciones principales |
+|---|---|---|
+| createCommitment | `titulo, tipo_id, fecha_objetivo, request_id`; ADMIN también `owner_id`; `aprobador_id` si aplica | Referencias activas; responsable distinto del aprobador; UUID v4 para reintentos. |
+| updateCommitment | `compromiso_id, expected_version, changes` | Estado abierto, permiso de gestión y versión actual. |
+| submitEvidence | `compromiso_id, expected_version, url, comentario`; `nombre` opcional en el servidor | Responsable o ADMIN; estado abierto; HTTPS; aprobación o cierre directo según el compromiso. |
+| decideApproval | `aprobacion_id, expected_version, approval_version, decision, comentario` | Solicitud pendiente y decisión APROBAR o DEVOLVER; actor asignado o delegado vigente; no autocierre. |
+| reassignCommitment | `compromiso_id, expected_version, owner_id, aprobador_id, motivo` | ADMIN; compromiso no cerrado ni anulado; referencias activas y coherentes. |
+| cancelCommitment | `compromiso_id, expected_version, motivo` | Responsable o ADMIN; compromiso no cerrado ni anulado. |
+| addCommitmentComment | `compromiso_id, comentario, request_id` | Acceso al compromiso y UUID v4 ligado a ese compromiso y autor. |
+
+Campos opcionales de creación: `descripcion, subtipo, proyecto_id, criticidad, nivel_aprobacion`. Los estados y enumeraciones admitidos se definen en Config.gs.
+
+`changes` acepta únicamente `estado, porcentaje_avance, descripcion, fecha_objetivo`. Estado debe pertenecer a OPEN_STATUS; avance es un número finito entre 0 y 99. Cierre y envío a aprobación tienen operaciones propias. Los campos ausentes no se reemplazan. La interfaz omite la llamada si no detecta cambios.
+
+Las versiones proceden de la vista que el usuario abrió, no de una actualización silenciosa posterior. La interfaz siempre las envía. Para compatibilidad con integraciones anteriores, el servidor conserva la entrada antigua de actualización y permite omitir versiones; cualquier integración nueva debe usar el contrato de versión documentado.
+
+Una respuesta MutationResult contiene `{ok, id, user}` y `detail` si sigue siendo visible, o `remove: true` si se perdió acceso. Envío de evidencia añade `state` y, cuando aplica, `approvalId`; comentarios añaden `comment`. El navegador actualiza su estado solo después de una respuesta exitosa.
+
+Crear y comentar conservan su UUID ante errores de comunicación. Un UUID repetido recupera el resultado anterior; no representa una nueva operación. Un comentario no puede reutilizar el UUID de otro compromiso o autor. Evidencia y decisión también validan estado y versión: repetir el envío después de completarlo se rechaza en lugar de crear otra solicitud. La entrega de correo no puede garantizar exactamente una entrega entre servicios; ENVIANDO requiere revisión manual.
+
+## Administración y automatización
+
+`saveAdminRecord` recibe `{section, id?, request_id, activo, ...campos}`. Secciones: users, types, projects, delegations y recurrences. `id` edita un registro existente; sin él, el UUID identifica un alta idempotente. Campos y reglas específicas se encuentran en Admin.gs y las definiciones de formulario en ClientAdmin.html. La desactivación respeta responsabilidades pendientes y exige conservar al menos un ADMIN activo.
+
+`initializeFeatures` no recibe argumentos. Exige ADMIN, completa encabezados faltantes, crea NOTIFICACIONES cuando hace falta e instala detección de cambios en Sheets. No elimina filas ni columnas adicionales.
+
+`saveAutomationSettings` recibe `{enabled, email}` y administra el disparador horario desde su ADMIN propietario. `runOperationsNow` ejecuta tareas pendientes como ADMIN. `retryNotification` recibe `{notificacion_id, motivo}` y solo permite estados ERROR o ENVIANDO.
+
+Los manejadores `scheduledTasks_`, `trackSheetEdit_` y `trackSheetChange_` son privados y comprueban el ID del disparador instalado. No deben exponerse como operaciones de la interfaz ni usarse con objetos inventados en el despliegue real.
+
+## Errores
+
+| Código | Significado | Comportamiento de la interfaz |
+|---|---|---|
+| AUTH | Google no devolvió identidad o el usuario no está activo | Al sincronizar, limpia datos locales y cierra vistas y diálogos. |
+| FORBIDDEN | Identidad válida sin permiso para la operación | Muestra el motivo y conserva el formulario. |
+| VALIDATION | Entrada, referencia o estado inválido | Permite corregir el formulario. |
+| CONFLICT | La versión mostrada ya cambió | Conserva el borrador, pide sincronización y ofrece actualizar explícitamente el detalle. |
+| CONFIGURATION | Sheet, entorno o esquema incorrecto | Muestra el problema para que lo corrija administración. |
+| TECHNICAL | Error de servicio o comunicación sin código de negocio | Conserva lo escrito; una sincronización fallida queda pendiente. |
+
+El servidor lanza `Error` con prefijo `CODIGO: mensaje`, porque google.script.run transporta el mensaje del error. ClientApi reconstruye `error.code` y un mensaje sin prefijo para la interfaz. Los registros de rendimiento contienen nombres de operaciones, duraciones y conteos; no incluyen el contenido de formularios.

@@ -1,0 +1,32 @@
+{
+  "server": [
+    "Config.gs",
+    "Errors.gs",
+    "Performance.gs",
+    "Changes.gs",
+    "Contracts.gs",
+    "Code.gs",
+    "Auth.gs",
+    "Repository.gs",
+    "Validation.gs",
+    "Commitments.gs",
+    "Activity.gs",
+    "Approvals.gs",
+    "Sync.gs",
+    "Admin.gs",
+    "Notifications.gs",
+    "Automation.gs"
+  ],
+  "html": [
+    "Index.html",
+    "Styles.html",
+    "Client.html",
+    "ClientCore.html",
+    "ClientApi.html",
+    "ClientAdmin.html",
+    "ClientViews.html",
+    "ClientApprovals.html",
+    "ClientCommitments.html",
+    "ClientEvents.html"
+  ]
+}
