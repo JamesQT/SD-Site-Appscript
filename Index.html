@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <?!= include('Styles'); ?>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand"><span class="brand-mark">SD</span><span><strong>SD Control</strong><small>Solution Development</small></span></div>
+        <nav id="main-nav" aria-label="Navegación principal">
+          <button class="nav-item active" data-view="inicio"><span>⌂</span>Inicio</button>
+          <button class="nav-item" data-view="compromisos"><span>▤</span>Compromisos</button>
+          <button class="nav-item" data-view="mis-tareas"><span>✓</span>Mis tareas</button>
+          <button class="nav-item" data-view="aprobaciones"><span>◎</span>Aprobaciones <b id="approval-badge" class="nav-badge">0</b></button>
+          <button class="nav-item admin-only hidden" data-view="recurrentes"><span>↻</span>Línea base</button>
+          <button class="nav-item admin-only hidden" data-view="equipo"><span>♧</span>Equipo</button>
+          <button class="nav-item admin-only hidden" data-view="admin"><span>⚙</span>Administración</button>
+        </nav>
+        <div class="sidebar-foot">MVP · datos conectados al Sheet</div>
+      </aside>
+
+      <main class="main-area">
+        <header class="topbar">
+          <div class="breadcrumb">SD Control <span>/</span> <strong id="breadcrumb-current">Inicio</strong></div>
+          <div class="sync-controls"><span id="sync-status" role="status">Cargando datos…</span><button id="sync-now" type="button" class="button" data-action="sync-now">Actualizar</button></div><div class="user-menu"><div class="avatar" id="user-avatar">SD</div><div><strong id="user-name">Cargando…</strong><small id="user-role"></small></div></div>
+        </header>
+
+        <div id="global-error" class="alert hidden" role="alert"></div>
+        <div id="loading" class="loading"><span class="spinner"></span>Conectando con el Sheet…</div>
+
+        <section class="view active" id="view-inicio">
+          <div class="page-head"><div><h1 id="welcome">Hola</h1><p>Resumen de compromisos y pendientes de revisión.</p></div><button class="button primary" data-action="open-create">＋ Nuevo compromiso</button></div>
+          <div class="stat-grid">
+            <article class="stat"><span>Abiertos</span><strong id="stat-open">0</strong></article>
+            <article class="stat danger"><span>Vencidos</span><strong id="stat-overdue">0</strong></article>
+            <article class="stat warning"><span>Vencen en 7 días</span><strong id="stat-soon">0</strong></article>
+            <article class="stat"><span>Por aprobar</span><strong id="stat-approvals">0</strong></article>
+          </div>
+          <div class="two-col">
+            <section class="panel"><div class="panel-head"><h2>Requieren atención</h2><button class="text-button" data-action="go" data-target="compromisos">Ver todos →</button></div><div id="dashboard-table"></div></section>
+            <section class="panel"><div class="panel-head"><h2>Mi bandeja</h2><span class="muted">Pendientes</span></div><div id="dashboard-inbox" class="list-stack"></div></section>
+          </div>
+        </section>
+
+        <section class="view" id="view-compromisos">
+          <div class="page-head"><div><h1>Compromisos</h1><p>Consulta responsable, fecha, estado y criticidad.</p></div><button class="button primary" data-action="open-create">＋ Nuevo compromiso</button></div>
+          <div class="toolbar"><input class="control search" id="commitment-search" placeholder="Buscar compromiso…"><select class="control" id="filter-status"><option value="">Todos los estados</option><option value="PENDIENTE">Pendiente</option><option value="EN_CURSO">En curso</option><option value="BLOQUEADO">Bloqueado</option><option value="EN_APROBACION">En aprobación</option><option value="CERRADO">Cerrado</option><option value="ANULADO">Anulado</option></select><select class="control" id="filter-type"><option value="">Todos los tipos</option></select></div>
+          <section class="panel"><div id="commitments-table"></div></section>
+        </section>
+
+        <section class="view" id="view-mis-tareas">
+          <div class="page-head"><div><h1>Mis tareas</h1><p>Compromisos que tienes asignados para ejecutar.</p></div></div>
+          <div class="toolbar"><select class="control" id="task-status-filter"><option value="">Todos</option><option value="PENDIENTE">Pendientes</option><option value="EN_CURSO">En curso</option><option value="BLOQUEADO">Bloqueados</option></select></div>
+          <section class="panel"><div id="tasks-table"></div></section>
+        </section>
+
+        <section class="view" id="view-aprobaciones">
+          <div class="page-head"><div><h1>Aprobaciones</h1><p>Revisa cierres asignados directamente o dentro de una delegación vigente.</p></div></div>
+          <div class="two-col approval-layout"><section class="panel"><div class="panel-head"><h2>Pendientes de mi revisión</h2><span id="approval-count" class="badge">0</span></div><div id="approval-list" class="list-stack"></div></section><section class="panel"><div id="approval-detail" class="empty-state">Selecciona una aprobación para revisar.</div></section></div>
+        </section>
+
+        <section class="view" id="view-recurrentes">
+          <div class="page-head"><div><h1>Línea base</h1><p>Plantillas periódicas y su próxima generación.</p></div><div class="dialog-actions"><button class="button" data-action="manage-recurrences">Administrar plantillas</button><button class="button primary" data-action="new-recurrence">＋ Nueva plantilla</button><button class="button" data-action="run-operations">Generar pendientes</button></div></div>
+          <section class="panel"><div id="recurrences-table"></div></section>
+        </section>
+
+        <section class="view" id="view-equipo">
+          <div class="page-head"><div><h1>Equipo</h1><p>Carga abierta y aprobaciones pendientes por persona.</p></div></div>
+          <div id="team-grid" class="team-grid"></div>
+        </section>
+
+        <section class="view" id="view-admin">
+          <div class="page-head"><div><h1>Administración</h1><p>Usuarios, tipos, proyectos, delegaciones y catálogos.</p></div></div>
+          <div class="toolbar"><select id="admin-section" class="control"><option value="users">Usuarios</option><option value="types">Tipos</option><option value="projects">Proyectos</option><option value="delegations">Delegaciones</option><option value="recurrences">Recurrencias</option><option value="notifications">Correos</option><option value="catalogs">Catálogos</option></select><button id="admin-new" class="button primary" data-action="new-admin">＋ Nuevo registro</button></div>
+          <section class="panel"><div id="admin-table"></div></section>
+          <section class="panel detail-section"><h2>Automatización y correos</h2><p>La tarea horaria genera los compromisos pendientes y entrega los avisos de asignación, aprobación y devolución. Los correos se envían desde la cuenta que activa la automatización.</p>
+            <form id="automation-form"><label class="check-field"><input id="automation-enabled" type="checkbox"> Activar ejecución cada hora</label><label class="check-field"><input id="automation-email" type="checkbox"> Enviar notificaciones por correo</label><div class="dialog-actions"><button class="button primary" type="submit">Guardar configuración</button><button class="button" type="button" data-action="run-operations">Ejecutar ahora</button></div></form>
+            <p id="automation-status" role="status"></p><button class="button" data-action="initialize-features">Preparar o actualizar tablas</button>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="create-dialog" class="dialog">
+      <form id="create-form" method="dialog">
+        <div class="dialog-head"><div><h2>Nuevo compromiso</h2><p>Registra el resultado, responsable y fecha objetivo.</p></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div>
+        <div class="form-grid">
+          <label class="form-field full">Título<input name="titulo" required maxlength="160"></label>
+          <label class="form-field">Tipo<select name="tipo_id" id="create-type" required></select></label>
+          <label class="form-field">Criticidad<select name="criticidad"><option value="MEDIA">Media</option><option value="BAJA">Baja</option><option value="ALTA">Alta</option><option value="CRITICA">Crítica</option></select></label>
+          <label class="form-field">Responsable<select name="owner_id" id="create-owner" required></select></label>
+          <label class="form-field">Fecha objetivo<input name="fecha_objetivo" type="date" required></label>
+          <label class="form-field">Aprobador<select name="aprobador_id" id="create-approver" required></select></label>
+          <label class="form-field">Nivel de aprobación<select name="nivel_aprobacion"><option value="NIVEL_1">Nivel 1</option><option value="NIVEL_2">Nivel 2</option></select></label>
+          <label class="form-field">Proyecto<select name="proyecto_id" id="create-project"><option value="">Sin proyecto</option></select></label>
+          <label class="form-field full">Descripción / resultado esperado<textarea name="descripcion" rows="3" maxlength="2000"></textarea></label>
+        </div>
+        <div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">Cancelar</button><button type="submit" class="button primary">Crear compromiso</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="evidence-dialog" class="dialog">
+      <form id="evidence-form" method="dialog">
+        <div class="dialog-head"><div><h2>Enviar evidencia</h2><p>El compromiso pasará a aprobación.</p></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div>
+        <input type="hidden" name="compromiso_id">
+        <label class="form-field">Nombre de la evidencia<input name="nombre" required maxlength="180" placeholder="Ej.: Reporte validado"></label>
+        <label class="form-field">Enlace de Drive<input name="url" type="url" required placeholder="https://drive.google.com/…"></label>
+        <label class="form-field">Comentario de cierre<textarea name="comentario" rows="3" required maxlength="2000"></textarea></label>
+        <div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">Cancelar</button><button type="submit" class="button primary">Enviar a aprobación</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="detail-dialog" class="dialog wide-dialog"><div id="detail-content"></div></dialog>
+    <dialog id="feature-dialog" class="dialog"><form id="feature-form"><div class="dialog-head"><h2 id="feature-title"></h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><div id="feature-fields" class="form-grid"></div><p id="feature-error" class="form-error" role="alert"></p><div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">Cancelar</button><button id="feature-save" type="submit" class="button primary">Guardar</button></div></form></dialog>
+    <div id="toast" class="toast" aria-live="polite"></div>
+    <?!= include('Client'); ?>
+  </body>
+</html>

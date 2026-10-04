@@ -1,0 +1,503 @@
+<script>
+(() => {
+  'use strict';
+  const state = { data: null, admin: null, selectedApproval: null, toastTimer: null, approvalLoad: 0, deciding: false, detailLoad: 0, detailId: null, activityLoad: 0, activity: [], activityCursor: null, activityBusy: false, details: {}, activityCache: {}, metadataVersion: null, syncPromise: null, mutations: 0, epoch: 0, syncRequested: false };
+  const $ = (selector, root) => (root || document).querySelector(selector);
+  const $$ = (selector, root) => Array.from((root || document).querySelectorAll(selector));
+
+  function callServer(name, ...args) {
+    const started = performance.now();
+    const report = outcome => {
+      if (['getCommitmentDetail', 'getCommitmentActivity'].includes(name)) console.info('SD_RPC', {endpoint:name, outcome:outcome, durationMs:Math.round(performance.now()-started)});
+    };
+    return new Promise((resolve, reject) => {
+      google.script.run.withSuccessHandler(value => {report('ok'); resolve(value);}).withFailureHandler(err => {report('error'); reject(new Error(err && err.message ? err.message : String(err)));})[name](...args);
+    });
+  }
+  function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+  function showToast(message) {
+    const el = $('#toast'); el.textContent = message; el.classList.add('show');
+    clearTimeout(state.toastTimer); state.toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+  }
+  function showError(error) {
+    const el = $('#global-error'); el.textContent = error && error.message ? error.message : String(error); el.classList.remove('hidden');
+  }
+  function clearError() { $('#global-error').classList.add('hidden'); }
+  function dateLabel(value) {
+    if (!value) return '—';
+    const d = new Date(String(value).slice(0,10) + 'T12:00:00');
+    return isNaN(d.getTime()) ? escapeHtml(value) : d.toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'});
+  }
+  function statusName(value) {
+    return ({PENDIENTE:'Pendiente',EN_CURSO:'En curso',BLOQUEADO:'Bloqueado',EN_APROBACION:'En aprobación',CERRADO:'Cerrado',ANULADO:'Anulado'})[value] || value || '—';
+  }
+  function statusClass(value) {
+    return ({PENDIENTE:'orange',EN_CURSO:'blue',BLOQUEADO:'red',EN_APROBACION:'purple',CERRADO:'green'})[value] || '';
+  }
+  function criticalityName(value) { return ({BAJA:'Baja',MEDIA:'Media',ALTA:'Alta',CRITICA:'Crítica'})[value] || value || '—'; }
+  function criticalityClass(value) { return ({BAJA:'',MEDIA:'',ALTA:'orange',CRITICA:'red'})[value] || ''; }
+  function emptyTable(message) { return `<div class="empty-state">${escapeHtml(message)}</div>`; }
+
+  const adminDefinitions = {
+    users: {key:'usuario_id',title:'Usuario',fields:[['nombre','Nombre','text'],['correo_corporativo','Correo corporativo','email'],['rol_sistema','Rol','roles']]},
+    types: {key:'tipo_id',title:'Tipo de compromiso',fields:[['nombre','Nombre','text'],['descripcion','Descripción','textarea',false],['requiere_aprobacion','Requiere aprobación','boolean']]},
+    projects: {key:'proyecto_id',title:'Proyecto',fields:[['nombre','Nombre','text'],['descripcion','Descripción','textarea',false]]},
+    delegations: {key:'delegacion_id',title:'Delegación de nivel 1',fields:[['delegante_id','Delegante','people'],['delegado_id','Delegado','people'],['alcance_tipo','Alcance','scope'],['tipo_id','Tipo (para alcance Tipo)','types',false],['proyecto_id','Proyecto (para alcance Proyecto)','projects',false],['fecha_inicio','Fecha inicial','date'],['fecha_fin','Fecha final','date']]},
+    recurrences: {key:'recurrencia_id',title:'Plantilla recurrente',fields:[['nombre','Nombre','text'],['descripcion','Descripción','textarea',false],['tipo_id','Tipo','types'],['proyecto_id','Proyecto','projects',false],['owner_id','Responsable','people'],['aprobador_id','Aprobador','people',false],['nivel_aprobacion','Nivel de aprobación','levels'],['criticidad','Criticidad','criticality'],['frecuencia','Frecuencia','frequency'],['fecha_inicio','Fecha inicial','date'],['fecha_fin','Fecha final (opcional)','date',false],['proxima_generacion','Próxima generación','date'],['dias_plazo','Días para completar cada instancia','number']]}
+  };
+  const booleanValue = v => v === true || v === 1 || String(v).toUpperCase() === 'TRUE';
+  function featureField(field, record) {
+    const [name,label,type,required=true]=field;
+    const value=record[name]==null?'':record[name];
+    const attrs=`name="${name}" ${required?'required':''}`;
+    let control;
+    const enums={roles:[['RESPONSABLE','Responsable'],['ADMIN','Administrador']],boolean:[['true','Sí'],['false','No']],scope:[['GLOBAL','Global'],['TIPO','Tipo'],['PROYECTO','Proyecto']],levels:[['NIVEL_1','Nivel 1'],['NIVEL_2','Nivel 2']],criticality:[['BAJA','Baja'],['MEDIA','Media'],['ALTA','Alta'],['CRITICA','Crítica']],frequency:[['DIARIA','Diaria'],['SEMANAL','Semanal'],['MENSUAL','Mensual'],['TRIMESTRAL','Trimestral'],['ANUAL','Anual']]};
+    let options=enums[type];
+    if(type==='people') options=state.data.people.map(p=>[p.usuario_id,p.nombre]);
+    if(type==='types') options=state.data.types.map(t=>[t.tipo_id,t.nombre]);
+    if(type==='projects') options=state.data.projects.map(p=>[p.proyecto_id,p.nombre]);
+    if(options) {
+      const selected=type==='boolean'?String(booleanValue(value)):String(value);
+      if(!enums[type] && value && !options.some(o=>o[0]===String(value))) options=[...options,[String(value),String(value)+' (inactivo)']];
+      control=`<select ${attrs}>${!enums[type]?'<option value="">Seleccionar…</option>':''}${options.map(([id,title])=>`<option value="${escapeHtml(id)}" ${id===selected?'selected':''}>${escapeHtml(title)}</option>`).join('')}</select>`;
+    } else if(type==='textarea') control=`<textarea ${attrs} rows="3" maxlength="2000">${escapeHtml(value)}</textarea>`;
+    else control=`<input ${attrs} type="${type}" value="${escapeHtml(type==='date'?String(value).slice(0,10):value)}" ${type==='number'?'min="0" max="3650" step="1"':type==='text'?'maxlength="160"':''}>`;
+    return `<label class="form-field ${type==='textarea'?'full':''}">${escapeHtml(label)}${control}</label>`;
+  }
+  function showFeatureForm(title,action,fields,record={},extra={}) {
+    if ($('#feature-dialog').open) return;
+    const form=$('#feature-form');form.reset();form.dataset.busy='false';
+    form.dataset.action=action;form.dataset.payload=JSON.stringify(extra);form.dataset.requestId=crypto.randomUUID();
+    $('#feature-title').textContent=title;
+    $('#feature-fields').innerHTML=fields.map(f=>featureField(f,record)).join('');
+    $('#feature-error').textContent='';$('#feature-save').disabled=false;
+    $('#feature-dialog').showModal();
+  }
+  async function openAdminEditor(section,id) {
+    if(!state.data.isAdmin) return;
+    if(!state.admin) state.admin=await callServer('getAdminData');
+    const def=adminDefinitions[section];if(!def) return;
+    const record=id?(state.admin[section]||[]).find(r=>String(r[def.key])===id):null;
+    if(id&&!record) throw new Error('El registro ya no existe.');
+    const today=new Date().toLocaleDateString('en-CA',{timeZone:'America/Lima'});
+    const defaults={activo:true,requiere_aprobacion:true,rol_sistema:'RESPONSABLE',nivel_aprobacion:'NIVEL_1',criticidad:'MEDIA',frecuencia:'SEMANAL',fecha_inicio:today,proxima_generacion:today,dias_plazo:7};
+    const values=Object.assign(defaults,record||{});
+    if (record && !values.aprobador_id && record.aprobador_actual_id) values.aprobador_id=record.aprobador_actual_id;
+    showFeatureForm((record?'Editar ':'Nuevo ')+def.title,'saveAdminRecord',[...def.fields,['activo','Activo','boolean']],values,{section:section,id:id||''});
+  }
+  async function renderAdmin() {
+    if(!state.admin) state.admin=await callServer('getAdminData');
+    const key=$('#admin-section').value,rows=state.admin[key]||[],def=adminDefinitions[key];
+    $('#admin-new').classList.toggle('hidden',!def);
+    $('#automation-enabled').checked=!!state.admin.automation.enabled;
+    $('#automation-email').checked=!!state.admin.automation.email;
+    $('#automation-status').textContent=`${state.admin.automation.enabled?'Automatización horaria activa':'Automatización desactivada'} · Correos pendientes: ${state.admin.automation.pending} · Para revisar: ${state.admin.automation.failed}${state.admin.automation.lastRun?' · Última ejecución: '+state.admin.automation.lastRun:''}${state.admin.automation.lastError?' · '+state.admin.automation.lastError:''}`;
+    if(!rows.length) {$('#admin-table').innerHTML=emptyTable('No hay registros para esta vista.');return;}
+    const keys=Object.keys(rows[0]).filter(k=>k!=='_row');
+    $('#admin-table').innerHTML=`<div class="table-wrap"><table><thead><tr>${def||key==='notifications'?'<th>Acción</th>':''}${keys.map(k=>`<th>${escapeHtml(k.replace(/_/g,' '))}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${def?`<td><button class="button" data-action="edit-admin" data-section="${key}" data-record="${escapeHtml(r[def.key])}">Editar</button></td>`:key==='notifications'?`<td>${['ERROR','ENVIANDO'].includes(r.estado)?`<button class="button" data-action="retry-notification" data-record="${escapeHtml(r.notificacion_id)}">Reintentar</button>`:''}</td>`:''}${keys.map(k=>`<td>${escapeHtml(displayValue(r[k]))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  }
+  async function refreshFeatures() {
+    state.admin = null;
+    await synchronize();
+    if($('#view-admin').classList.contains('active')) await renderAdmin();
+  }
+  async function handleFeatureAction(button) {
+    const action=button.dataset.action;
+    if(action==='edit-admin') return openAdminEditor(button.dataset.section,button.dataset.record);
+    if(action==='new-admin') return openAdminEditor($('#admin-section').value);
+    if(action==='new-recurrence') return openAdminEditor('recurrences');
+    if(action==='manage-recurrences') {$('#admin-section').value='recurrences';return setView('admin');}
+    if(action==='reassign') {
+      const displayedVersion=$('#detail-content').dataset.version;
+      closeDialog(button);
+      const c=state.data.commitments.find(c=>c.compromiso_id===button.dataset.id);
+      return showFeatureForm('Reasignar compromiso','reassignCommitment',[['owner_id','Responsable','people'],['aprobador_id','Aprobador','people',booleanValue(c.requiere_aprobacion)],['motivo','Motivo','textarea']],{owner_id:c.owner_id,aprobador_id:c.aprobador_actual_id},{compromiso_id:c.compromiso_id,expected_version:displayedVersion});
+    }
+    if(action==='cancel-commitment') {
+      const displayedVersion=$('#detail-content').dataset.version;
+      closeDialog(button);
+      return showFeatureForm('Anular compromiso','cancelCommitment',[['motivo','Motivo de anulación','textarea']],{}, {compromiso_id:button.dataset.id,expected_version:displayedVersion});
+    }
+    if(action==='retry-notification') {
+      return showFeatureForm('Reintentar correo','retryNotification',[['motivo','Motivo (si figura Enviando, comprueba antes si el correo ya llegó)','textarea']],{}, {notificacion_id:button.dataset.record});
+    }
+    if(['initialize-features','run-operations'].includes(action)) {
+      if(button.disabled) return;button.disabled=true;
+      try {
+        const result=await callServer(action==='initialize-features'?'initializeFeatures':'runOperationsNow');
+        if(result.errors&&result.errors.length) showError(new Error(result.errors.join('\n')));
+        showToast(action==='initialize-features'?'Funciones preparadas.':`Generados: ${result.generated}. Correos enviados: ${result.sent}.`);
+        await refreshFeatures();
+        if(result.errors&&result.errors.length) showError(new Error(result.errors.join('\n')));
+      } finally {button.disabled=false;}
+    }
+  }
+  function renderDetailFeatures(detail) {
+    const c=detail.commitment;
+    const open=!['CERRADO','ANULADO'].includes(c.estado);
+    return `<section class="detail-section"><h3>Seguimiento</h3><div id="detail-comments">Consulta el historial para ver comentarios anteriores.</div><form id="comment-form" data-id="${escapeHtml(c.compromiso_id)}" data-request-id="${crypto.randomUUID()}"><label class="form-field">Nuevo comentario<textarea name="comentario" rows="3" required maxlength="2000"></textarea></label><div class="dialog-actions"><button type="submit" class="button primary">Publicar comentario</button></div></form></section>${open?`<div class="dialog-actions">${state.data.isAdmin?`<button class="button" data-action="reassign" data-id="${escapeHtml(c.compromiso_id)}">Reasignar</button>`:''}${state.data.isAdmin||c.owner_id===state.data.user.id?`<button class="button danger" data-action="cancel-commitment" data-id="${escapeHtml(c.compromiso_id)}">Anular con motivo</button>`:''}</div>`:''}`;
+  }
+
+  function rebuildLocalData() {
+    const details=Object.values(state.details);
+    state.data.commitments=details.map(d=>d.commitment);
+    state.data.myTasks=details.filter(d=>d.isTask).map(d=>d.commitment);
+    state.data.approvals=details.flatMap(d=>d.approvals.filter(a=>a.canDecide).map(a=>Object.assign({},a,{compromiso:d.commitment})));
+    const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Lima',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    const end=new Date(today+'T12:00:00Z');end.setUTCDate(end.getUTCDate()+7);const soon=end.toISOString().slice(0,10);
+    const open=state.data.commitments.filter(c=>['PENDIENTE','EN_CURSO','BLOQUEADO'].includes(c.estado));
+    state.data.counts={open:open.length,overdue:open.filter(c=>c.fecha_objetivo&&c.fecha_objetivo<today).length,dueSoon:open.filter(c=>c.fecha_objetivo>=today&&c.fecha_objetivo<=soon).length,blocked:open.filter(c=>c.estado==='BLOQUEADO').length,approvals:state.data.approvals.length,myTasks:state.data.myTasks.length};
+    if(state.data.isAdmin)state.data.team=state.data.people.map(u=>({id:u.usuario_id,name:u.nombre,role:u.rol_sistema,open:open.filter(c=>c.owner_id===u.usuario_id).length,overdue:open.filter(c=>c.owner_id===u.usuario_id&&c.fecha_objetivo&&c.fecha_objetivo<today).length,approvals:details.reduce((n,d)=>n+d.approvals.filter(a=>a.estado==='PENDIENTE'&&a.aprobador_asignado_id===u.usuario_id).length,0)}));
+  }
+  function setSyncStatus(text) { $('#sync-status').textContent=text; }
+  function notifyOpenDetailChanged(id) {
+    if(state.detailId===id&&$('#detail-dialog').open) {
+      const note=$('#detail-update-note');if(note){note.textContent='Hay cambios recientes. ';note.classList.remove('hidden');note.insertAdjacentHTML('beforeend','<button type="button" class="text-button" data-action="reload-local-detail">Descartar edición y actualizar detalle</button>');}
+    }
+  }
+  function applyMutation(result) {
+    if(result.user){state.data.user=result.user;state.data.isAdmin=result.user.role==='ADMIN';}
+    if(result.remove){delete state.details[result.id];delete state.activityCache[result.id];if(state.detailId===result.id)$('#detail-dialog').close();}
+    if(result.detail){state.details[result.id]=result.detail;}
+    rebuildLocalData();renderApp();
+    setSyncStatus('Cambio guardado · '+new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}));
+  }
+  async function synchronize() {
+    if(!state.data)return;
+    if(state.mutations){state.syncRequested=true;return;}
+    if(state.syncPromise)return state.syncPromise;
+    const epoch=state.epoch,versions=Object.fromEntries(Object.entries(state.details).map(([id,d])=>[id,d._syncVersion]));
+    setSyncStatus('Sincronizando…');$('#sync-now').disabled=true;
+    state.syncPromise=(async()=>{
+      try {
+        const delta=await callServer('syncAppData',{versions:versions,metadataVersion:state.metadataVersion});
+        if(epoch!==state.epoch){state.syncRequested=true;return;}
+        delta.removed.forEach(id=>{delete state.details[id];delete state.activityCache[id];if(state.detailId===id)$('#detail-dialog').close();});
+        delta.details.forEach(d=>{
+          const id=d.commitment.compromiso_id,old=state.details[id];
+          state.details[id]=d;
+          if(state.activityCache[id]&&state.activityCache[id].version!==d.activityVersion)delete state.activityCache[id];
+          if(old&&old._syncVersion!==d._syncVersion)notifyOpenDetailChanged(id);
+        });
+        if(delta.metadata){Object.assign(state.data,delta.metadata);state.admin=null;}
+        state.metadataVersion=delta.metadataVersion;
+        rebuildLocalData();renderApp();
+        if(!state.data.isAdmin&&['admin','equipo','recurrentes'].some(v=>$('#view-'+v).classList.contains('active')))setView('inicio');
+        setSyncStatus('Actualizado · '+new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}));
+      } catch(error) {
+        setSyncStatus('Sincronización pendiente');
+        if(/no está activo en USUARIOS|Google no devolvió tu correo/.test(error.message)) {
+          state.details={};state.activityCache={};state.data=null;
+          $$('dialog[open]').forEach(d=>d.close());$$('.view').forEach(v=>v.classList.remove('active'));
+          $('#user-name').textContent='Sin acceso';$('#user-role').textContent='';$('#user-avatar').textContent='';
+          showError(error);
+        }
+      } finally {
+        state.syncPromise=null;$('#sync-now').disabled=false;
+        if(state.syncRequested&&!state.mutations){state.syncRequested=false;setTimeout(()=>synchronize(),0);}
+      }
+    })();return state.syncPromise;
+  }
+  function mutationError(error,form) {
+    const message=error.message.replace(/^CONFLICT:\s*/,'');
+    if(form&&form.id==='update-form'){$('#detail-save-error').textContent=message;notifyOpenDetailChanged(state.detailId);}
+    else showToast(message);
+    if(error.message.startsWith('CONFLICT:'))state.syncRequested=true;
+  }
+  function updateActivityView() {
+    const comments=$('#detail-comments'),history=$('#detail-history'),button=$('#activity-more');if(!comments||!history||!button)return;
+    comments.innerHTML=state.activity.filter(h=>h.accion==='COMMENT').map(h=>`<div class="list-row"><div><strong>${escapeHtml(h.usuario_nombre||personName(h.usuario_id))}</strong><p class="comment-text">${escapeHtml(h.detalle)}</p><small>${escapeHtml(h.fecha_evento)}</small></div></div>`).join('')||emptyTable(state.activityCursor?'Sin comentarios en la actividad cargada. Puedes consultar registros anteriores.':'Sin comentarios.');
+    history.innerHTML=state.activity.map(h=>`<div class="list-row"><div><strong>${escapeHtml(h.accion)}</strong><small>${escapeHtml(h.fecha_evento)} · ${escapeHtml(h.detalle||h.campo||'')}</small></div><span class="muted">${escapeHtml(h.usuario_nombre||h.usuario_id)}</span></div>`).join('')||emptyTable('Sin eventos registrados.');
+    button.textContent='Ver más actividad';button.classList.toggle('hidden',!state.activityCursor);
+  }
+  function addLocalComment(result,form) {
+    const id=result.id,c=result.comment,old=state.activityCache[id];
+    const history=[Object.assign({},c,{usuario_nombre:state.data.user.name}),...(old?old.history:[])].filter((h,i,all)=>all.findIndex(x=>x.historial_id===h.historial_id)===i);
+    const cursor=old?old.cursor:c._row;
+    state.activityCache[id]={history:history,cursor:cursor,version:result.detail?result.detail.activityVersion:c.historial_id};
+    applyMutation(result);
+    if(state.detailId===id&&$('#detail-dialog').open){state.activity=history;state.activityCursor=cursor;updateActivityView();form.reset();form.dataset.requestId=crypto.randomUUID();form.dataset.dirty='false';}
+  }
+
+  async function refresh() {
+    clearError(); $('#loading').classList.remove('hidden');
+    try {
+      state.data = await callServer('getAppData');
+      state.details = Object.fromEntries(state.data.details.map(d => [d.commitment.compromiso_id, d]));
+      state.metadataVersion = state.data.metadataVersion;
+      state.admin = null;
+      rebuildLocalData();
+      setSyncStatus('Datos cargados');
+      $('#loading').classList.add('hidden');
+      renderApp();
+    } catch (error) {
+      $('#loading').classList.add('hidden'); showError(error);
+    }
+  }
+  function renderApp() {
+    const d = state.data, u = d.user;
+    $('#user-name').textContent = u.name;
+    $('#user-role').textContent = u.role === 'ADMIN' ? 'Líder / Administrador' : 'Responsable';
+    $('#user-avatar').textContent = (u.name || 'SD').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();
+    $('#welcome').textContent = 'Hola, ' + u.name.split(' ')[0];
+    $('#stat-open').textContent = d.counts.open;
+    $('#stat-overdue').textContent = d.counts.overdue;
+    $('#stat-soon').textContent = d.counts.dueSoon;
+    $('#stat-approvals').textContent = d.counts.approvals;
+    $('#approval-badge').textContent = d.counts.approvals;
+    $$('.admin-only').forEach(el => el.classList.toggle('hidden', !d.isAdmin));
+    if (!$('#create-dialog').open) fillCreateOptions(); renderDashboard(); renderCommitmentTables(); renderApprovals();
+    if (d.isAdmin) { renderRecurrences(); renderTeam(); }
+  }
+  function fillCreateOptions() {
+    const d = state.data, selectedType = $('#filter-type').value;
+    $('#create-type').innerHTML = d.types.map(t=>`<option value="${escapeHtml(t.tipo_id)}">${escapeHtml(t.nombre)}</option>`).join('');
+    $('#create-project').innerHTML = '<option value="">Sin proyecto</option>' + d.projects.map(p=>`<option value="${escapeHtml(p.proyecto_id)}">${escapeHtml(p.nombre)}</option>`).join('');
+    const people = d.people.length ? d.people : [{usuario_id:d.user.id,nombre:d.user.name,rol_sistema:d.user.role}];
+    $('#create-owner').innerHTML = people.map(p=>`<option value="${escapeHtml(p.usuario_id)}">${escapeHtml(p.nombre)}</option>`).join('');
+    $('#create-approver').innerHTML = people.map(p=>`<option value="${escapeHtml(p.usuario_id)}">${escapeHtml(p.nombre)}</option>`).join('');
+    $('#filter-type').innerHTML = '<option value="">Todos los tipos</option>' + d.types.map(t=>`<option value="${escapeHtml(t.tipo_id)}">${escapeHtml(t.nombre)}</option>`).join('');
+    $('#filter-type').value = selectedType;
+    if (d.user.role !== 'ADMIN') $('#create-owner').disabled = true;
+    else $('#create-owner').disabled = false;
+  }
+  function renderDashboard() {
+    const rows = state.data.commitments.filter(c=>['PENDIENTE','EN_CURSO','BLOQUEADO','EN_APROBACION'].includes(c.estado)).slice(0,6);
+    $('#dashboard-table').innerHTML = commitmentTable(rows, false);
+    const inbox = state.data.approvals.slice(0,5);
+    $('#dashboard-inbox').innerHTML = inbox.length ? inbox.map(a=>`<div class="list-row"><button data-action="open-approval" data-id="${escapeHtml(a.aprobacion_id)}"><strong>${escapeHtml(a.compromiso.titulo)}</strong><small>${escapeHtml(a.compromiso.owner_name)} · vence ${dateLabel(a.compromiso.fecha_objetivo)}</small></button><span class="pill purple">Revisar</span></div>`).join('') : '<div class="empty-state">No tienes aprobaciones pendientes.</div>';
+  }
+  function commitmentTable(rows, includeType) {
+    if (!rows.length) return emptyTable('No hay compromisos para mostrar.');
+    return `<div class="table-wrap"><table><thead><tr><th>Compromiso</th><th>Responsable</th>${includeType?'<th>Tipo</th>':''}<th>Fecha objetivo</th><th>Estado</th><th>Criticidad</th></tr></thead><tbody>${rows.map(c=>`<tr data-id="${escapeHtml(c.compromiso_id)}"><td><span class="task-title">${escapeHtml(c.titulo)}</span><span class="task-sub">${escapeHtml(c.compromiso_id)} · ${escapeHtml(c.project_name)}</span></td><td>${escapeHtml(c.owner_name)}</td>${includeType?`<td>${escapeHtml(c.type_name)}</td>`:''}<td>${dateLabel(c.fecha_objetivo)}</td><td><span class="pill ${statusClass(c.estado)}">${statusName(c.estado)}</span></td><td><span class="pill ${criticalityClass(c.criticidad)}">${criticalityName(c.criticidad)}</span></td></tr>`).join('')}</tbody></table></div>`;
+  }
+  function renderCommitmentTables() {
+    $('#commitments-table').innerHTML = commitmentTable(state.data.commitments, true);
+    $('#tasks-table').innerHTML = commitmentTable(state.data.myTasks, true);
+    applyFilters();
+  }
+  function applyFilters() {
+    const q = ($('#commitment-search').value || '').toLowerCase();
+    const status = $('#filter-status').value, type = $('#filter-type').value;
+    $$('#commitments-table tbody tr').forEach(row=>{
+      const c = state.data.commitments.find(x=>x.compromiso_id===row.dataset.id);
+      row.classList.toggle('hidden', !c || (!!q && !`${c.titulo} ${c.compromiso_id} ${c.owner_name}`.toLowerCase().includes(q)) || (!!status && c.estado!==status) || (!!type && c.tipo_id!==type));
+    });
+    const taskStatus = $('#task-status-filter').value;
+    $$('#tasks-table tbody tr').forEach(row=>{
+      const c = state.data.myTasks.find(x=>x.compromiso_id===row.dataset.id);
+      row.classList.toggle('hidden', !c || (!!taskStatus && c.estado!==taskStatus));
+    });
+  }
+  function renderApprovals() {
+
+    const list = state.data.approvals;
+    $('#approval-count').textContent = list.length;
+    $('#approval-list').innerHTML = list.length ? list.map(a=>`<div class="list-row"><button data-action="open-approval" data-id="${escapeHtml(a.aprobacion_id)}"><strong>${escapeHtml(a.compromiso.titulo)}</strong><small>${escapeHtml(a.compromiso.owner_name)} · ${dateLabel(a.compromiso.fecha_objetivo)} · ${criticalityName(a.compromiso.criticidad)}</small></button><span class="pill purple">Pendiente</span></div>`).join('') : '<div class="empty-state">No tienes aprobaciones pendientes.</div>';
+    if (state.selectedApproval) {
+      const current=list.find(a=>a.aprobacion_id===state.selectedApproval.aprobacion_id);
+      if (!current || current._version!==state.selectedApproval._version || current.compromiso._version!==state.selectedApproval.compromiso._version) {
+        const id=state.selectedApproval.aprobacion_id;
+        state.selectedApproval=null;$$('#approval-detail [data-action="decide"]').forEach(b=>b.disabled=true);
+        if (!$('#approval-refresh-note')) $('#approval-detail').insertAdjacentHTML('afterbegin', `<p id="approval-refresh-note" class="form-error">La solicitud cambió. <button class="text-button" data-action="reload-approval" data-id="${escapeHtml(id)}">Actualizar revisión</button></p>`);
+      }
+    } else if (!$('#approval-detail textarea')) $('#approval-detail').textContent='Selecciona una aprobación para revisar.';
+
+  }
+  function openApproval(id, draft) {
+    const a = state.data.approvals.find(x=>x.aprobacion_id===id);
+    if (!a) return;
+    const load = ++state.approvalLoad;
+    state.selectedApproval = null;
+    $('#approval-detail').textContent = 'Cargando solicitud…';
+    try {
+      const detail = state.details[a.compromiso_id];
+      if (!detail) throw new Error('Actualiza los datos para revisar este compromiso.');
+      if (load !== state.approvalLoad) return;
+      state.selectedApproval = a;
+      const c = detail.commitment;
+      const ev = detail.evidence.filter(e => e.aprobacion_id === a.aprobacion_id).slice(-1)[0];
+      $('#approval-detail').innerHTML = `<div class="panel-head"><h2>Revisión de cierre</h2><span class="badge">${escapeHtml(a.aprobacion_id)}</span></div><div class="detail-grid"><div class="detail-row"><span>Compromiso</span><strong>${escapeHtml(c.titulo)}</strong></div><div class="detail-row"><span>Responsable</span><span>${escapeHtml(c.owner_name)}</span></div><div class="detail-row"><span>Fecha objetivo</span><span>${dateLabel(c.fecha_objetivo)}</span></div><div class="detail-row"><span>Descripción</span><span>${escapeHtml(c.descripcion || '—')}</span></div><div class="detail-row"><span>Evidencia</span>${ev?`<a href="${escapeHtml(ev.url_drive)}" target="_blank" rel="noopener">${escapeHtml(ev.nombre_archivo || 'Abrir enlace')} ↗</a>`:'<span>Sin enlace</span>'}</div></div><div class="detail-section"><label class="form-field">Comentario para aprobar o devolver<textarea id="decision-comment" rows="3" maxlength="2000" placeholder="Obligatorio al devolver"></textarea></label><div class="dialog-actions"><button class="button danger" data-action="decide" data-decision="DEVOLVER">Devolver</button><button class="button primary" data-action="decide" data-decision="APROBAR">Aprobar y cerrar</button></div></div>`;
+      if (draft) $('#decision-comment').value = draft;
+    } catch (error) { showToast(error.message); }
+  }
+  function openDetail(id) {
+    const detail=state.details[id];
+    if (!detail) return showToast('Este compromiso ya no está disponible. Actualiza los datos.');
+    ++state.detailLoad; ++state.activityLoad;
+    state.activityBusy=false;state.activity=[];state.activityCursor=null;state.detailId=id;
+      const c = detail.commitment;
+      $('#detail-content').dataset.version=c._version;
+      const statuses = ['PENDIENTE','EN_CURSO','BLOQUEADO'].map(s=>`<option value="${s}" ${s===c.estado?'selected':''}>${statusName(s)}</option>`).join('');
+      const canClose = detail.permissions.close;
+      const canEdit = detail.permissions.edit;
+      const evidence = detail.evidence.map(e=>`<div class="list-row"><a href="${escapeHtml(e.url_drive)}" target="_blank" rel="noopener">${escapeHtml(e.nombre_archivo||'Evidencia')} ↗</a><small>${dateLabel(e.fecha_subida)}</small></div>`).join('') || '<div class="empty-state">Sin evidencia.</div>';
+      $('#detail-content').innerHTML = `<div class="dialog-head"><div><h2>${escapeHtml(c.titulo)}</h2><p>${escapeHtml(c.compromiso_id)} · ${escapeHtml(c.type_name)} · ${escapeHtml(c.project_name)}</p></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><p id="detail-update-note" class="form-error hidden"></p><div class="detail-grid"><div class="detail-row"><span>Responsable</span><span>${escapeHtml(c.owner_name)}</span></div><div class="detail-row"><span>Fecha objetivo</span><span>${dateLabel(c.fecha_objetivo)}</span></div><div class="detail-row"><span>Estado</span><span class="pill ${statusClass(c.estado)}">${statusName(c.estado)}</span></div><div class="detail-row"><span>Criticidad</span><span class="pill ${criticalityClass(c.criticidad)}">${criticalityName(c.criticidad)}</span></div><div class="detail-row"><span>Aprobador</span><span>${escapeHtml(c.approver_name)}</span></div><div class="detail-row"><span>Descripción</span><span>${escapeHtml(c.descripcion||'—')}</span></div></div>${canEdit?`<div class="detail-section"><h3>Actualizar avance</h3><form id="update-form" data-id="${escapeHtml(c.compromiso_id)}" data-version="${escapeHtml(c._version)}" data-baseline="${escapeHtml(JSON.stringify({estado:c.estado,porcentaje_avance:c.porcentaje_avance,fecha_objetivo:c.fecha_objetivo,descripcion:c.descripcion||''}))}"><div class="form-grid"><label class="form-field">Estado<select name="estado">${statuses}</select></label><label class="form-field">Avance (%)<input type="number" name="porcentaje_avance" min="0" max="99" value="${Number(c.porcentaje_avance)||0}"></label><label class="form-field">Fecha objetivo<input type="date" name="fecha_objetivo" value="${escapeHtml(c.fecha_objetivo||'')}"></label><label class="form-field full">Descripción / actualización<textarea name="descripcion" rows="2" maxlength="2000">${escapeHtml(c.descripcion||'')}</textarea></label></div><p id="detail-save-error" class="form-error" role="alert"></p><div class="dialog-actions"><button class="button primary" type="submit">Guardar avance</button></div></form></div>`:''}${canClose?`<div class="dialog-actions"><button class="button" data-action="open-evidence" data-id="${escapeHtml(c.compromiso_id)}">${c.requiere_aprobacion === true || String(c.requiere_aprobacion).toUpperCase() === 'TRUE' || c.requiere_aprobacion === 1 ? 'Adjuntar evidencia y enviar a aprobación' : 'Adjuntar evidencia y cerrar'}</button></div>`:''}<div class="detail-section"><h3>Evidencias</h3>${evidence}</div><div class="detail-section"><h3>Historial</h3><div id="detail-history">El historial se consulta cuando lo solicites.</div><button type="button" id="activity-more" class="button" data-action="activity-more">Ver historial y comentarios</button></div>`;
+      $('#detail-content').insertAdjacentHTML('beforeend', renderDetailFeatures(detail));
+
+    const cached=state.activityCache[id];
+    if(cached&&cached.version===detail.activityVersion){state.activity=cached.history;state.activityCursor=cached.cursor;updateActivityView();}
+    $('#detail-content').setAttribute('aria-busy','false');
+    if (!$('#detail-dialog').open) $('#detail-dialog').showModal();
+  }
+  async function loadActivity(id, detailLoad, reset) {
+    if (state.activityBusy || detailLoad !== state.detailLoad || !$('#detail-dialog').open) return;
+    state.activityBusy = true;
+    const load = ++state.activityLoad;
+    const button = $('#activity-more'); if (button) {button.disabled = true;button.textContent='Cargando actividad…';}
+    try {
+      const page = await callServer('getCommitmentActivity', id, reset ? null : state.activityCursor);
+      if (load !== state.activityLoad || detailLoad !== state.detailLoad || !$('#detail-dialog').open) return;
+      state.activity = reset ? page.history : state.activity.concat(page.history);
+      state.activityCursor = page.nextCursor;
+      state.activityCache[id]={history:state.activity,cursor:state.activityCursor,version:page.activityVersion};
+      updateActivityView();
+    } catch (error) {
+      if (load !== state.activityLoad || detailLoad !== state.detailLoad || !$('#detail-dialog').open) return;
+      if (reset) $('#detail-comments').textContent = 'No se pudo cargar el seguimiento.';
+      $('#detail-history').innerHTML = `<p class="form-error" role="alert">${escapeHtml(error.message)}</p>`;
+      button.textContent = 'Reintentar actividad'; button.classList.remove('hidden');
+    } finally {
+      if (load === state.activityLoad && detailLoad === state.detailLoad) {state.activityBusy = false; if (button) button.disabled = false;}
+    }
+  }
+  $('#detail-dialog').addEventListener('close', () => {
+    if (!$('#detail-dialog').open) {++state.detailLoad; ++state.activityLoad; state.detailId = null; state.activityBusy = false;}
+  });
+  function renderRecurrences() {
+    const rows = state.data.recurrences;
+    $('#recurrences-table').innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Plantilla</th><th>Frecuencia</th><th>Responsable</th><th>Próxima generación</th><th>Criticidad</th></tr></thead><tbody>${rows.map(r=>`<tr><td><span class="task-title">${escapeHtml(r.nombre)}</span><span class="task-sub">${escapeHtml(r.descripcion||'')}</span></td><td>${escapeHtml(r.frecuencia)}</td><td>${escapeHtml(personName(r.owner_id))}</td><td>${dateLabel(r.proxima_generacion)}</td><td><span class="pill ${criticalityClass(r.criticidad)}">${criticalityName(r.criticidad)}</span></td></tr>`).join('')}</tbody></table></div>` : emptyTable('No hay plantillas recurrentes activas.');
+  }
+  function personName(id) { const p=(state.data.people||[]).find(x=>x.usuario_id===id); return p?p.nombre:id||'—'; }
+  function renderTeam() {
+    const rows=state.data.team;
+    $('#team-grid').innerHTML = rows.length ? rows.map(p=>`<article class="team-card"><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.role)}</p><div class="team-metrics"><span><strong>${p.open}</strong>Abiertos</span><span><strong>${p.overdue}</strong>Vencidos</span><span><strong>${p.approvals}</strong>Por aprobar</span></div></article>`).join('') : emptyTable('No hay usuarios activos.');
+  }
+  function displayValue(v) { if (v===true) return 'Sí'; if (v===false) return 'No'; return v==null||v===''?'—':v; }
+  function setView(name) {
+    if (!state.data) return;
+    if (['recurrentes','equipo','admin'].includes(name) && !state.data.isAdmin) return showToast('Vista disponible para el perfil ADMIN.');
+    $$('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+name));
+    $$('.nav-item[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));
+    $('#breadcrumb-current').textContent=({inicio:'Inicio',compromisos:'Compromisos','mis-tareas':'Mis tareas',aprobaciones:'Aprobaciones',recurrentes:'Línea base',equipo:'Equipo',admin:'Administración'})[name]||name;
+    if (name==='admin') renderAdmin().catch(showError);
+  }
+  function openCreate() {
+    if (!state.data) return;
+    fillCreateOptions();
+    const form=$('#create-form'); form.reset();
+    form.dataset.requestId = crypto.randomUUID();
+    $('#create-owner').value = state.data.user.id;
+    const date=new Date(); date.setDate(date.getDate()+7);
+    const localDate=new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,10);
+    form.elements.fecha_objetivo.value=localDate;
+    $('#create-dialog').showModal();
+  }
+  function closeDialog(target) { const dialog=target.closest('dialog'); if (dialog && dialog.open) dialog.close(); }
+  function formObject(form) { return Object.fromEntries(new FormData(form).entries()); }
+
+  document.addEventListener('click', async event => {
+    const nav=event.target.closest('.nav-item[data-view]');
+    if (nav) return setView(nav.dataset.view);
+    const row=event.target.closest('tr[data-id]');
+    if (row) return openDetail(row.dataset.id);
+    const button=event.target.closest('[data-action]');
+    if (!button) return;
+    const action=button.dataset.action;
+    if (['edit-admin','new-admin','new-recurrence','manage-recurrences','reassign','cancel-commitment','initialize-features','run-operations','retry-notification'].includes(action)) {
+      try { await handleFeatureAction(button); } catch(error) { showError(error); }
+      return;
+    }
+    if (action==='sync-now') return synchronize();
+    if (action==='reload-local-detail') return openDetail(state.detailId);
+    if (action==='reload-approval') return openApproval(button.dataset.id,$('#decision-comment') ? $('#decision-comment').value : '');
+    if (action==='retry-detail') return openDetail(button.dataset.id);
+    if (action==='activity-more') return loadActivity(state.detailId, state.detailLoad, !state.activity.length);
+    if (action==='open-create') return openCreate();
+    if (action==='close-dialog') return closeDialog(button);
+    if (action==='go') return setView(button.dataset.target);
+    if (action==='open-approval') return openApproval(button.dataset.id);
+    if (action==='open-evidence') {
+      closeDialog(button);
+      const form=$('#evidence-form'); form.reset(); form.elements.compromiso_id.value=button.dataset.id;form.dataset.version=$('#detail-content').dataset.version;
+      const c = state.data.commitments.find(x => x.compromiso_id === button.dataset.id);
+      const needsApproval = c && (c.requiere_aprobacion === true || String(c.requiere_aprobacion).toUpperCase() === 'TRUE' || c.requiere_aprobacion === 1);
+      $('#evidence-dialog .dialog-head p').textContent = needsApproval ? 'El compromiso pasará a aprobación.' : 'El compromiso se cerrará con la evidencia registrada.';
+      $('#evidence-form button[type=submit]').textContent = needsApproval ? 'Enviar a aprobación' : 'Cerrar compromiso';
+      $('#evidence-dialog').showModal(); return;
+    }
+    if (action==='decide') {
+      if (!state.selectedApproval || state.deciding) return;
+      state.deciding = true;state.mutations++;state.epoch++;
+      const selectedId = state.selectedApproval.aprobacion_id, selectedVersion=state.selectedApproval._version, commitmentVersion=state.selectedApproval.compromiso._version;
+      const decisionComment = $('#decision-comment').value;
+      $$('#approval-detail button').forEach(b => b.disabled = true);
+      try {
+        const result=await callServer('decideApproval',{aprobacion_id:selectedId,decision:button.dataset.decision,comentario:decisionComment,expected_version:commitmentVersion,approval_version:selectedVersion});
+        state.selectedApproval=null;$('#approval-detail').textContent='Selecciona una aprobación para revisar.';applyMutation(result);
+        showToast(button.dataset.decision==='APROBAR'?'Aprobación registrada.':'Compromiso devuelto al responsable.');
+      } catch (error) { mutationError(error); }
+      finally { state.mutations--;state.epoch++;if(state.syncRequested){state.syncRequested=false;synchronize();}state.deciding = false; $$('#approval-detail button').forEach(b => b.disabled = false); }
+    }
+  });
+  document.addEventListener('submit', async event => {
+    const form = event.target;
+    if (!['create-form','evidence-form','update-form','feature-form','comment-form','automation-form'].includes(form.id)) return;
+    event.preventDefault();
+    if (form.dataset.busy === 'true') return;
+    form.dataset.busy = 'true';state.mutations++;state.epoch++;
+    const submitButtons = $$('button[type=submit]', form);
+    submitButtons.forEach(b => b.disabled = true);
+    try {
+    if(form.id==='feature-form') {
+      try {
+        const result=await callServer(form.dataset.action,Object.assign(formObject(form),JSON.parse(form.dataset.payload),{request_id:form.dataset.requestId}));
+        $('#feature-dialog').close();if(result.detail||result.remove)applyMutation(result);else await refreshFeatures();showToast('Cambios guardados.');
+      } catch(error) {$('#feature-error').textContent=error.message.replace(/^CONFLICT:\s*/,'');if(error.message.startsWith('CONFLICT:'))state.syncRequested=true;}
+    }
+    if(form.id==='comment-form') {
+      try {
+        const result=await callServer('addCommitmentComment',{compromiso_id:form.dataset.id,comentario:form.elements.comentario.value,request_id:form.dataset.requestId});
+        addLocalComment(result,form);showToast('Comentario registrado.');
+      } catch(error) {showToast(error.message);}
+    }
+    if(form.id==='automation-form') {
+      try {
+        await callServer('saveAutomationSettings',{enabled:$('#automation-enabled').checked,email:$('#automation-email').checked});
+        await refreshFeatures();showToast('Automatización actualizada.');
+      } catch(error) {showError(error);}
+    }
+    if (event.target.id==='create-form') {
+      event.preventDefault();
+      try { const result=await callServer('createCommitment',Object.assign(formObject(event.target), {request_id: form.dataset.requestId})); $('#create-dialog').close(); applyMutation(result);showToast('Compromiso creado.'); }
+      catch(error) { mutationError(error,form); }
+    }
+    if (event.target.id==='evidence-form') {
+      event.preventDefault();
+      try { const result = await callServer('submitEvidence',Object.assign(formObject(form),{expected_version:form.dataset.version})); $('#evidence-dialog').close();applyMutation(result); showToast(result.state === 'CERRADO' ? 'Compromiso cerrado con evidencia.' : 'Evidencia enviada a aprobación.'); }
+      catch(error) { mutationError(error,form); }
+    }
+    if (event.target.id==='update-form') {
+      event.preventDefault();
+      const current=formObject(form),baseline=JSON.parse(form.dataset.baseline),changes={};
+      Object.keys(baseline).forEach(k=>{const value=k==='porcentaje_avance'?Number(current[k]):current[k];if(String(value)!==String(baseline[k]))changes[k]=value;});
+      const payload={compromiso_id:form.dataset.id,expected_version:form.dataset.version,changes:changes};
+      if(!Object.keys(changes).length){showToast('No hay cambios para guardar.');return;}
+      try { const result=await callServer('updateCommitment',payload); $('#detail-dialog').close();applyMutation(result); showToast('Avance actualizado.'); }
+      catch(error) { mutationError(error,form); }
+    }
+    } finally { form.dataset.busy = 'false'; submitButtons.forEach(b => b.disabled = false);state.mutations--;state.epoch++;if(state.syncRequested){state.syncRequested=false;synchronize();} }
+  });
+  $('#commitment-search').addEventListener('input',applyFilters);
+  $('#filter-status').addEventListener('change',applyFilters);
+  $('#filter-type').addEventListener('change',applyFilters);
+  $('#task-status-filter').addEventListener('change',applyFilters);
+  $('#admin-section').addEventListener('change',()=>renderAdmin().catch(showError));
+  document.addEventListener('input',event=>{const form=event.target.closest('form');if(form)form.dataset.dirty='true';});
+  setInterval(()=>{if(!document.hidden)synchronize();},60000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)synchronize();});
+  refresh();
+})();
+</script>
