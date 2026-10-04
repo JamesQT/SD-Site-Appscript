@@ -1,5 +1,6 @@
 # Artefactos locales y configuración de conexión personal.
 .clasp.json
+.clasprc.json
 node_modules/
 *.zip
 tests/*.png
