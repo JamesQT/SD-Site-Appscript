@@ -20,7 +20,7 @@ const APP = Object.freeze({
   SYNC_INTERVAL_MS: 60000,
   FULL_CHECK_INTERVAL_MS: 300000,
   CATALOG_CACHE_SECONDS: 300,
-  HTML_COMPONENTS: ['Styles','Client','ClientCore','ClientApi','ClientAdmin','ClientViews','ClientApprovals','ClientCommitments','ClientEvents']
+  HTML_COMPONENTS: ['Styles','Client','ClientCore','ClientApi','ClientAdmin','ClientViews','ClientApprovals','ClientCommitments','ClientBoard','ClientEvents']
 });
 
 /**

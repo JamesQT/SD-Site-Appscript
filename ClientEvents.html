@@ -13,6 +13,13 @@
     const button=event.target.closest('[data-action]');
     if (!button) return;
     const action=button.dataset.action;
+    if(action==='board-detail')return openDetail(button.dataset.id);
+    if(action==='checklist-remove'){button.closest('[data-step]').remove();$('#checklist-form').dataset.dirty='true';return;}
+    if(action==='checklist-add'){
+      if($$('[data-step]',$('#checklist-items')).length>=40)return showToast('Máximo 40 pasos.');
+      $('#checklist-items').insertAdjacentHTML('beforeend',checklistRow({id:crypto.randomUUID(),title:'',done:false}));
+      $('#checklist-items').lastElementChild.querySelector('input[type=text]').focus();$('#checklist-form').dataset.dirty='true';return;
+    }
     if (['edit-admin','new-admin','new-recurrence','manage-recurrences','reassign','cancel-commitment','initialize-features','run-operations','retry-notification'].includes(action)) {
       try { await handleFeatureAction(button); } catch(error) { showError(error); }
       return;
@@ -57,13 +64,26 @@
    */
   async function handleSubmit(event) {
     const form = event.target;
-    if (!['create-form','evidence-form','update-form','feature-form','comment-form','automation-form'].includes(form.id)) return;
+    if (!['create-form','evidence-form','update-form','feature-form','comment-form','automation-form','checklist-form'].includes(form.id)) return;
     event.preventDefault();
     if (form.dataset.busy === 'true') return;
     form.dataset.busy = 'true';state.mutations++;state.epoch++;
     const submitButtons = $$('button[type=submit]', form);
     submitButtons.forEach(b => b.disabled = true);
     try {
+    if(form.id==='checklist-form') {
+      const items=$$('[data-step]',form).map(row=>({id:row.dataset.step,title:row.querySelector('input[type=text]').value,done:row.querySelector('input[type=checkbox]').checked}));
+      try {
+        const result=await callServer('saveCommitmentChecklist',{compromiso_id:form.dataset.id,expected_version:form.dataset.version,items:items});applyMutation(result);
+        if(result.detail&&state.detailId===form.dataset.id&&$('#detail-dialog').open){
+          $('#checklist-section').outerHTML=renderChecklist(result.detail);
+          const update=$('#update-form');if(update&&update.dataset.version===form.dataset.version)update.dataset.version=result.detail.commitment._version;
+          $('#detail-content').dataset.version=result.detail.commitment._version;
+        }
+        showToast('Checklist guardado.');
+      }
+      catch(error){$('#checklist-error').textContent=error.message;if(error.code==='CONFLICT')state.syncRequested=true;}
+    }
     if(form.id==='feature-form') {
       try {
         const result=await callServer(form.dataset.action,Object.assign(formObject(form),JSON.parse(form.dataset.payload),{request_id:form.dataset.requestId}));
@@ -106,6 +126,7 @@
 
   /** Registra eventos una sola vez y solicita la instantánea inicial. */
   function startClient() {
+    startBoard();
     document.addEventListener('click',handleClick);
     document.addEventListener('submit',handleSubmit);
     $('#commitment-search').addEventListener('input',applyFilters);

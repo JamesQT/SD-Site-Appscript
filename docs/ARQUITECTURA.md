@@ -14,6 +14,7 @@ SD Control continúa funcionando dentro de Google Workspace: HTML Service para l
 | Validation.gs | Texto, fechas, enlaces, referencias e identificadores. |
 | Repository.gs | Lecturas normalizadas, contexto por petición, bloqueo y escrituras agrupadas. |
 | Commitments.gs | Creación, avance, reasignación y anulación. |
+| Checklist.gs | Pasos, migración aditiva y guardado con autorización y versión. |
 | Approvals.gs | Evidencias y decisiones de aprobación. |
 | Activity.gs | Comentarios, historial paginado y auditoría. |
 | Sync.gs | Instantáneas autorizadas, versiones y respuestas incrementales. |
@@ -38,6 +39,7 @@ No debe añadirse lógica de negocio a Code.gs. Una operación pública autentic
 | ClientApprovals | Bandeja, selección de revisión y versiones de decisiones. |
 | ClientCommitments | Detalle, creación, seguimiento y actividad paginada. |
 | ClientEvents | Manejadores de clic y envío, doble clic y arranque de la aplicación. |
+| ClientBoard | Kanban, arrastre, movimientos accesibles y checklist del detalle. |
 
 Cada componente parcial contiene JavaScript envuelto en `<script>` para que HTML Service lo interprete correctamente. `include` lee ese bloque y extrae su contenido para insertarlo dentro del único cierre privado de Client.html. No se evalúa JavaScript suelto como plantilla HTML ni se insertan etiquetas script anidadas. Los componentes no deben abrirse como páginas independientes.
 

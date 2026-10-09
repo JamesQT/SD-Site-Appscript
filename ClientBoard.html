@@ -1,0 +1,73 @@
+<script>
+/** Kanban y edición de pasos; reutiliza la instantánea local y los flujos de cierre existentes. */
+  /** Representa las columnas y las tarjetas autorizadas; permite mover mediante selector o arrastre. */
+  function renderBoard() {
+    if(!state.data){$('#kanban-board').replaceChildren();return;}
+    const query=$('#board-search').value.toLowerCase(),mine=$('#board-mine').checked;
+    const columns=UI_CONFIG.status;
+    const rows=state.data.commitments.filter(c=>(!mine||state.details[c.compromiso_id].isTask)&&(!query||`${c.titulo} ${c.owner_name} ${c.project_name}`.toLowerCase().includes(query)));
+    $('#kanban-board').innerHTML=columns.map(status=>{
+      const cards=rows.filter(c=>c.estado===status);
+      return `<section class="kanban-column" data-column="${status}" aria-label="${statusName(status)}"><h2>${statusName(status)} <span class="badge">${cards.length}</span></h2><div class="kanban-cards">${cards.map(c=>{
+        const detail=state.details[c.compromiso_id],items=c.checklist||[],done=items.filter(i=>i.done).length;
+        const canMove=detail.permissions.edit&&!state.boardBusy;
+        const targets=UI_CONFIG.openStatus.concat(detail.permissions.close?[booleanValue(c.requiere_aprobacion)?'EN_APROBACION':'CERRADO']:[]);
+        return `<article class="kanban-card" data-card="${escapeHtml(c.compromiso_id)}" draggable="${canMove}"><button type="button" class="text-button kanban-title" data-action="board-detail" data-id="${escapeHtml(c.compromiso_id)}">${escapeHtml(c.titulo)}</button><p class="task-sub">${escapeHtml(c.project_name)}</p><p>${escapeHtml(c.owner_name)} · ${dateLabel(c.fecha_objetivo)}</p><span class="pill ${criticalityClass(c.criticidad)}">${criticalityName(c.criticidad)}</span><div class="kanban-progress"><progress max="100" value="${Number(c.porcentaje_avance)||0}" aria-label="Avance"></progress><span>${Number(c.porcentaje_avance)||0}%</span></div>${items.length?`<span class="muted">Checklist: ${done}/${items.length}</span>`:''}${canMove?`<label class="kanban-move">Mover a<select data-board-move="${escapeHtml(c.compromiso_id)}">${targets.map(s=>`<option value="${s}" ${s===status?'selected':''}>${statusName(s)}</option>`).join('')}</select></label>`:''}</article>`;
+      }).join('')||'<p class="empty-state">Sin compromisos.</p>'}</div></section>`;
+    }).join('');
+  }
+
+  /**
+   * Cambia solo estados abiertos; los destinos de cierre abren el flujo de evidencias.
+   * @param {string} id - ID de compromiso.
+   * @param {string} target - Estado de la columna destino.
+   * @returns {Promise<void>} Mutación completada o formulario de cierre abierto.
+   */
+  async function moveBoardCard(id,target) {
+    const detail=state.details[id];if(!detail||state.boardBusy)return;
+    const c=detail.commitment;if(c.estado===target)return;
+    if(!detail.permissions.edit){showToast('Este compromiso no se puede mover.');renderBoard();return;}
+    if(['EN_APROBACION','CERRADO'].includes(target)) {
+      const destination=booleanValue(c.requiere_aprobacion)?'EN_APROBACION':'CERRADO';
+      if(!detail.permissions.close||target!==destination){showToast('El cierre debe seguir las reglas de evidencias y aprobación.');renderBoard();return;}
+      openDetail(id);
+      $('#detail-content [data-action="open-evidence"]').click();
+      renderBoard();return;
+    }
+    if(!UI_CONFIG.openStatus.includes(target)){showToast('Usa Anular con motivo desde el detalle.');renderBoard();return;}
+    state.boardBusy=true;state.mutations++;state.epoch++;renderBoard();
+    try {applyMutation(await callServer('updateCommitment',{compromiso_id:id,expected_version:c._version,changes:{estado:target}}));showToast('Compromiso movido.');}
+    catch(error){mutationError(error);}
+    finally {state.boardBusy=false;state.mutations--;state.epoch++;renderBoard();if(state.syncRequested){state.syncRequested=false;synchronize();}}
+  }
+
+  /**
+   * Construye un checklist editable únicamente cuando los permisos del detalle lo permiten.
+   * @param {Object} detail - Detalle autorizado.
+   * @returns {string} Formulario o lista de lectura.
+   */
+  function renderChecklist(detail) {
+    const items=detail.commitment.checklist||[],editable=detail.permissions.edit;
+    return `<section id="checklist-section" class="detail-section"><h3>Checklist <span class="muted">${items.filter(i=>i.done).length}/${items.length} completados</span></h3>${editable?`<form id="checklist-form" data-id="${escapeHtml(detail.commitment.compromiso_id)}" data-version="${escapeHtml(detail.commitment._version)}"><div id="checklist-items">${items.map(i=>checklistRow(i)).join('')}</div><div class="dialog-actions"><button type="button" class="button" data-action="checklist-add">＋ Añadir paso</button><button type="submit" class="button primary">Guardar checklist</button></div><p id="checklist-error" class="form-error" role="alert"></p><p class="muted">Hasta 40 pasos. El checklist no cambia automáticamente el avance ni sustituye las evidencias.</p></form>`:items.map(i=>`<p>${i.done?'✓':'○'} ${escapeHtml(i.title)}</p>`).join('')||'<p class="muted">Sin pasos registrados.</p>'}</section>`;
+  }
+
+  /**
+   * Crea un paso con ID estable y campos escapados.
+   * @param {Object} item - Paso de checklist.
+   * @returns {string} Fila de formulario.
+   */
+  function checklistRow(item) {
+    return `<div class="checklist-row" data-step="${escapeHtml(item.id)}"><input type="checkbox" aria-label="Paso completado" ${item.done?'checked':''}><input type="text" aria-label="Título del paso" maxlength="160" required value="${escapeHtml(item.title)}"><button type="button" class="icon-button" data-action="checklist-remove" aria-label="Eliminar paso">×</button></div>`;
+  }
+
+  /** Registra interacción del tablero y checklists sin llamadas de lectura adicionales. */
+  function startBoard() {
+    $('#board-search').addEventListener('input',renderBoard);
+    $('#board-mine').addEventListener('change',renderBoard);
+    document.addEventListener('change',event=>{if(event.target.matches('[data-board-move]'))moveBoardCard(event.target.dataset.boardMove,event.target.value);});
+    document.addEventListener('dragstart',event=>{const card=event.target.closest('[data-card]');if(!card||card.draggable!==true)return;state.draggedCard=card.dataset.card;event.dataTransfer.setData('text/plain',card.dataset.card);event.dataTransfer.effectAllowed='move';});
+    document.addEventListener('dragover',event=>{if(state.draggedCard&&event.target.closest('[data-column]'))event.preventDefault();});
+    document.addEventListener('drop',event=>{const column=event.target.closest('[data-column]');if(!column||!state.draggedCard)return;event.preventDefault();const id=state.draggedCard;state.draggedCard=null;moveBoardCard(id,column.dataset.column);});
+    document.addEventListener('dragend',()=>{state.draggedCard=null;});
+  }
+</script>

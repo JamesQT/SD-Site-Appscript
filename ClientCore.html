@@ -1,7 +1,7 @@
 <script>
 /** Estado y utilidades de interfaz compartidos dentro del cierre privado. */
 
-  const state = { data: null, admin: null, selectedApproval: null, toastTimer: null, approvalLoad: 0, deciding: false, detailLoad: 0, detailId: null, activityLoad: 0, activity: [], activityCursor: null, activityBusy: false, details: {}, activityCache: {}, metadataVersion: null, dataVersion: null, syncPromise: null, mutations: 0, epoch: 0, syncRequested: false, syncForceRequested: false };
+  const state = { data: null, admin: null, selectedApproval: null, toastTimer: null, boardBusy: false, draggedCard: null, approvalLoad: 0, deciding: false, detailLoad: 0, detailId: null, activityLoad: 0, activity: [], activityCursor: null, activityBusy: false, details: {}, activityCache: {}, metadataVersion: null, dataVersion: null, syncPromise: null, mutations: 0, epoch: 0, syncRequested: false, syncForceRequested: false };
   const $ = (selector, root) => (root || document).querySelector(selector);
   const $$ = (selector, root) => Array.from((root || document).querySelectorAll(selector));
 

@@ -8,7 +8,7 @@
    * @returns {Promise<*>} Respuesta del servidor o rechazo con code y message.
    */
   function callServer(name, ...args) {
-    const allowed=['getAppData','syncAppData','getCommitmentActivity','getAdminData','createCommitment','updateCommitment','submitEvidence','decideApproval','reassignCommitment','cancelCommitment','addCommitmentComment','saveAdminRecord','initializeFeatures','saveAutomationSettings','runOperationsNow','retryNotification'];
+    const allowed=['getAppData','syncAppData','getCommitmentActivity','getAdminData','createCommitment','updateCommitment','submitEvidence','decideApproval','reassignCommitment','cancelCommitment','addCommitmentComment','saveAdminRecord','initializeFeatures','saveAutomationSettings','runOperationsNow','retryNotification','saveCommitmentChecklist'];
     if(!allowed.includes(name)) return Promise.reject(new Error('Operación no permitida.'));
     const started = performance.now();
     const report = outcome => {
