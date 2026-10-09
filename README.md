@@ -2,6 +2,8 @@
 
 Servidor e interfaz separados por responsabilidades, con JSDoc en funciones, contratos de datos, errores por código, sincronización con revisiones y cachés reconstruibles. Se conserva Google Apps Script + Sheets.
 
+La versión 3.6 renueva la presentación con azul noche, azul eléctrico y acentos cian/lima. Incorpora navegación lateral en escritorio, navegación horizontal en móvil, iconos SVG locales, indicadores destacados, estados de Kanban diferenciados y resumen inicial adaptado a tarjetas en móvil. Usa fuentes del sistema y CSS/SVG sin dependencias externas. Conserva las optimizaciones de rendimiento de 3.5.
+
 Guías: [arquitectura y módulos](docs/ARQUITECTURA.md), [contratos de operaciones](docs/CONTRATOS.md) e [instalación, entorno de pruebas y recuperación](docs/DESPLIEGUE.md).
 
 Corrección 3.0.1: si instalaste la entrega modular inicial y aparece **Malformed HTML content**, reemplaza Code.gs y los siete componentes ClientCore, ClientApi, ClientAdmin, ClientViews, ClientApprovals, ClientCommitments y ClientEvents. Conserva sus etiquetas `<script>` nuevas, guarda y publica una nueva versión. Los otros módulos de negocio no cambian.
