@@ -51,6 +51,7 @@
         <section class="view" id="view-kanban">
           <div class="page-head"><div><h1>Tablero Kanban</h1><p>Mueve los compromisos abiertos. El cierre mantiene las evidencias y aprobaciones.</p></div><button class="button primary" data-action="open-create">＋ Nuevo compromiso</button></div>
           <div class="toolbar"><input class="control search" id="board-search" aria-label="Buscar en Kanban" placeholder="Buscar título, responsable o proyecto…"><label class="check-field"><input type="checkbox" id="board-mine"> Solo mis tareas</label></div>
+          <div class="kanban-owner-toolbar"><span class="muted">Responsable</span><div id="board-owners" class="kanban-owners" role="group" aria-label="Filtrar por responsable"></div></div>
           <div id="kanban-board" class="kanban-board" aria-live="polite"></div>
         </section>
         <section class="view" id="view-compromisos">
