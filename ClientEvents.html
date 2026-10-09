@@ -6,6 +6,7 @@
    * @returns {Promise<void>} Finalización de la acción, si requiere servidor.
    */
   async function handleClick(event) {
+    if(state.profileSwitching)return;
     const nav=event.target.closest('.nav-item[data-view]');
     if (nav) return setView(nav.dataset.view);
     const row=event.target.closest('tr[data-id]');
@@ -127,6 +128,7 @@
   /** Registra eventos una sola vez y solicita la instantánea inicial. */
   function startClient() {
     startBoard();
+    $('#profile-selector').addEventListener('change',switchProfileView);
     document.addEventListener('click',handleClick);
     document.addEventListener('submit',handleSubmit);
     $('#commitment-search').addEventListener('input',applyFilters);

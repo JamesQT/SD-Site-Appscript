@@ -21,7 +21,7 @@
         const match=raw.match(/^(AUTH|FORBIDDEN|VALIDATION|CONFLICT|CONFIGURATION):\s*/);
         const error=new Error(match ? raw.slice(match[0].length) : raw);
         error.code=match ? match[1] : 'TECHNICAL';reject(error);
-      })[name](...args);
+      })[state.viewRole==='RESPONSABLE'?'runWithProfile':name](...(state.viewRole==='RESPONSABLE'?[name,args,'RESPONSABLE']:args));
     });
   }
 
@@ -74,7 +74,7 @@
    * @returns {Promise<void>|undefined} Sincronización completada o diferida hasta terminar la escritura.
    */
   async function synchronize(force=false) {
-    if(!state.data)return;
+    if(!state.data||state.profileSwitching)return;
     if(force)state.syncForceRequested=true;
     if(state.mutations){state.syncRequested=true;return;}
     if(state.syncPromise){if(force)state.syncRequested=true;return state.syncPromise;}
@@ -100,10 +100,11 @@
         setSyncStatus('Actualizado · '+new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}));
       } catch(error) {
         setSyncStatus('Sincronización pendiente');
-        if(error.code==='AUTH'||/no está activo en USUARIOS|Google no devolvió tu correo/.test(error.message)) {
+        if(error.code==='AUTH'||(error.code==='FORBIDDEN'&&state.viewRole==='RESPONSABLE')||/no está activo en USUARIOS|Google no devolvió tu correo/.test(error.message)) {
           state.details={};state.activityCache={};state.data=null;
           $$('dialog[open]').forEach(d=>d.close());$$('.view').forEach(v=>v.classList.remove('active'));
           $('#user-name').textContent='Sin acceso';$('#user-role').textContent='';$('#user-avatar').textContent='';
+          $('#profile-selector-wrap').classList.add('hidden');$('#profile-view-notice').classList.add('hidden');
           showError(error);
         }
       } finally {
@@ -144,6 +145,37 @@
     } catch (error) {
       $('#loading').classList.add('hidden'); showError(error);
     }
+  }
+
+  /**
+   * Sustituye la instantánea al cambiar de vista y evita perder borradores o mezclar respuestas.
+   * @param {Event} event - Cambio del selector de perfil.
+   * @returns {Promise<void>} Vista autorizada cargada o modo anterior conservado.
+   */
+  async function switchProfileView(event) {
+    const selector=event.target,previous=state.viewRole,next=selector.value;
+    if(!state.data||!state.data.canSwitchProfile||next===previous)return;
+    const dirty=$$('dialog[open] form').some(form=>form.dataset.dirty==='true');
+    if(state.profileSwitching||state.mutations||state.syncPromise||dirty){selector.value=previous;showToast(dirty?'Guarda o cierra el formulario antes de cambiar de perfil.':'Espera a que termine la operación actual.');return;}
+    const current=$('.view.active')?.id.replace('view-','')||'inicio';
+    state.profileSwitching=true;selector.disabled=true;state.viewRole=next;state.epoch++;
+    state.detailLoad++;state.activityLoad++;state.approvalLoad++;
+    $$('dialog[open]').forEach(dialog=>dialog.close());
+    $$('.view').forEach(view=>view.classList.remove('active'));
+    $('#loading').classList.remove('hidden');$('.main-area').setAttribute('aria-busy','true');
+    try {
+      const data=await callServer('getAppData');
+      state.data=data;state.details=Object.fromEntries(data.details.map(detail=>[detail.commitment.compromiso_id,detail]));
+      state.metadataVersion=data.metadataVersion;state.dataVersion=data.dataVersion;state.admin=null;
+      state.activityCache={};state.activity=[];state.activityCursor=null;state.activityBusy=false;state.detailId=null;state.selectedApproval=null;state.draggedCard=null;
+      $('#approval-detail').textContent='Selecciona una aprobación para revisar.';
+      $('#detail-content').replaceChildren();$('#admin-table').replaceChildren();
+      rebuildLocalData();renderApp();state.profileSwitching=false;setView('inicio');clearError();
+      setSyncStatus('Vista de '+(data.isAdmin?'Administrador':'Responsable'));
+      showToast(data.isAdmin?'Vista de Administrador activada.':'Vista de Responsable activada con tu propia cuenta.');
+    } catch(error) {
+      state.viewRole=previous;selector.value=previous;state.profileSwitching=false;renderApp();setView(current);showError(error);
+    } finally {state.profileSwitching=false;selector.disabled=false;$('#loading').classList.add('hidden');$('.main-area').setAttribute('aria-busy','false');}
   }
 
 </script>

@@ -26,9 +26,11 @@
       <main class="main-area">
         <header class="topbar">
           <div class="breadcrumb">SD Control <span>/</span> <strong id="breadcrumb-current">Inicio</strong></div>
-          <div class="sync-controls"><span id="environment-badge" class="pill orange hidden">Entorno de pruebas</span><span id="sync-status" role="status">Cargando datos…</span><button id="sync-now" type="button" class="button" data-action="sync-now">Actualizar</button></div><div class="user-menu"><div class="avatar" id="user-avatar">SD</div><div><strong id="user-name">Cargando…</strong><small id="user-role"></small></div></div>
+          <div class="sync-controls"><span id="environment-badge" class="pill orange hidden">Entorno de pruebas</span><span id="sync-status" role="status">Cargando datos…</span><button id="sync-now" type="button" class="button" data-action="sync-now">Actualizar</button></div>
+          <div class="user-menu"><label id="profile-selector-wrap" class="profile-selector-wrap hidden">Ver como<select id="profile-selector" class="control"><option value="ADMIN">Administrador</option><option value="RESPONSABLE">Responsable</option></select></label><div class="avatar" id="user-avatar">SD</div><div><strong id="user-name">Cargando…</strong><small id="user-role"></small></div></div>
         </header>
 
+        <div id="profile-view-notice" class="profile-view-notice hidden" role="status">Vista de Responsable · Estás usando tu propia cuenta con permisos de Responsable. Puedes volver a Administrador desde «Ver como».</div>
         <div id="global-error" class="alert hidden" role="alert"></div>
         <div id="loading" class="loading"><span class="spinner"></span>Cargando tu espacio de trabajo…</div>
 

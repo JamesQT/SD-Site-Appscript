@@ -8,6 +8,9 @@
     const environmentBadge=$('#environment-badge');
     environmentBadge.classList.toggle('hidden',UI_CONFIG.environment!=='PRUEBAS');
     const d = state.data, u = d.user;
+    $('#profile-selector-wrap').classList.toggle('hidden',!d.canSwitchProfile);
+    $('#profile-selector').value=d.isAdmin?'ADMIN':'RESPONSABLE';
+    $('#profile-view-notice').classList.toggle('hidden',!d.canSwitchProfile||d.isAdmin);
     $('#user-name').textContent = u.name;
     $('#user-role').textContent = u.role === 'ADMIN' ? 'Líder / Administrador' : 'Responsable';
     $('#user-avatar').textContent = (u.name || 'SD').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();
@@ -138,7 +141,7 @@
    * @param {*} name - Nombre de operación, vista o referencia.
    */
   function setView(name) {
-    if (!state.data) return;
+    if (!state.data||state.profileSwitching) return;
     if (['recurrentes','equipo','admin'].includes(name) && !state.data.isAdmin) return showToast('Vista disponible para el perfil ADMIN.');
     $$('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+name));
     $$('.nav-item[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));

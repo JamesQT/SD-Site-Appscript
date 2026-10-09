@@ -22,11 +22,38 @@ function authorizedCommitment_(commitmentId) {
  * @returns {Object} Fila activa del usuario autenticado.
  */
 function requireUser_() {
+  if(readContext_ && readContext_.viewActor)return readContext_.viewActor;
+  return actualUser_();
+}
+
+/** Identifica la cuenta real de Google sin aplicar la vista elegida para esta petición. */
+function actualUser_() {
   const email = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
   if (!email) throw appError_('AUTH','Google no devolvió tu correo. Revisa la implementación de la app web y ejecútala con la identidad del usuario que accede.');
   const user = readTable_(APP.SHEETS.users).find(r => String(r.correo_corporativo || '').trim().toLowerCase() === email && isTrue_(r.activo));
   if (!user) throw appError_('AUTH','Tu correo no está activo en USUARIOS. Actualiza esa pestaña con tu correo corporativo antes de usar la app.');
   return user;
+}
+
+/**
+ * Ejecuta una operación con un perfil reducido, sin cambiar identidad ni rol en Sheets.
+ * @param {string} name - Operación pública incluida en la lista permitida.
+ * @param {Array<*>} args - Argumentos originales de la operación.
+ * @param {string} role - Perfil de vista ADMIN o RESPONSABLE.
+ * @returns {*} Respuesta de la operación autorizada para el perfil efectivo.
+ */
+function runWithProfile(name,args,role) {
+  return withReadContext_('profile:'+name,function(){
+    const actor=actualUser_();
+    if(actor.rol_sistema!=='ADMIN')throw appError_('FORBIDDEN','Solo un administrador puede cambiar su perfil de vista.');
+    if(!['ADMIN','RESPONSABLE'].includes(role))throw appError_('VALIDATION','Perfil de vista inválido.');
+    const operations={getAppData:getAppData,syncAppData:syncAppData,getCommitmentActivity:getCommitmentActivity,getAdminData:getAdminData,createCommitment:createCommitment,updateCommitment:updateCommitment,submitEvidence:submitEvidence,decideApproval:decideApproval,reassignCommitment:reassignCommitment,cancelCommitment:cancelCommitment,addCommitmentComment:addCommitmentComment,saveAdminRecord:saveAdminRecord,initializeFeatures:initializeFeatures,saveAutomationSettings:saveAutomationSettings,runOperationsNow:runOperationsNow,retryNotification:retryNotification,saveCommitmentChecklist:saveCommitmentChecklist};
+    if(!Object.prototype.hasOwnProperty.call(operations,name)||!Array.isArray(args)||args.length>4)throw appError_('VALIDATION','Operación de vista no permitida.');
+    const previous=readContext_.viewActor;
+    readContext_.viewActor=Object.assign({},actor,{rol_sistema:role});
+    try {return operations[name].apply(null,args);}
+    finally {readContext_.viewActor=previous;}
+  });
 }
 
 /**
