@@ -24,7 +24,7 @@ function dependencyIds_(commitment) {
 function dependencySummary_(commitment,actor,context) {
   const items=dependencyIds_(commitment).map(id=>{
     const target=context.commitments[id],done=!!target&&isTrue_(target.activo)&&target.estado==='CERRADO';
-    const visible=actor.rol_sistema==='ADMIN'||!!target&&isTrue_(target.activo)&&canViewCommitment_(target,actor,context.allCollaborations,context.allApprovals.filter(a=>a.estado==='PENDIENTE'),context.delegations);
+    const visible=actor.rol_sistema==='ADMIN'||!!target&&isTrue_(target.activo)&&canViewCommitment_(target,actor,context.collaborations[id]||[],context.pendingApprovals[id]||[],context.delegations);
     return visible?{id:id,title:target?target.titulo:'Requisito eliminado',state:target?target.estado:'NO_DISPONIBLE',available:!!target&&isTrue_(target.activo),done:done}:{title:'Requisito sin acceso o no disponible',done:done};
   });
   return {items:items,pending:items.filter(item=>!item.done).length,total:items.length};

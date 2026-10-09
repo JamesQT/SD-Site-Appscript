@@ -120,7 +120,7 @@ function canApprove_(a, c, actor, delegations) {
  */
 function delegationCovers_(d, c) {
   if (!isTrue_(d.activo) || d.nivel_aprobacion !== 'NIVEL_1') return false;
-  const today = Utilities.formatDate(new Date(), APP.TIME_ZONE, 'yyyy-MM-dd');
+  const today = businessToday_();
   const start = toIsoDate_(d.fecha_inicio); const end = toIsoDate_(d.fecha_fin);
   if (start && today < start || end && today > end) return false;
   if (d.alcance_tipo === 'GLOBAL') return true;

@@ -1,5 +1,13 @@
 /** Revisiones por tabla y cachés reconstruibles. Ninguna caché autoriza usuarios. */
 
+/** Devuelve el día de negocio en Lima, calculado una sola vez durante cada petición. */
+function businessToday_() {
+  if(readContext_&&readContext_.today)return readContext_.today;
+  const today=Utilities.formatDate(new Date(),APP.TIME_ZONE,'yyyy-MM-dd');
+  if(readContext_)readContext_.today=today;
+  return today;
+}
+
 /**
  * Lee las revisiones del proyecto y las reutiliza durante la petición.
  * @returns {Object} Revisión global y revisiones de tablas para claves de caché.
@@ -50,21 +58,35 @@ function performanceCacheKey_(kind,table) {
  */
 function optionalCacheGet_(key) {
   try {
-    const value=CacheService.getScriptCache().get(key);
-    return value ? JSON.parse(value) : null;
+    const cache=CacheService.getScriptCache(),value=cache.get(key);
+    if(!value)return null;
+    const decoded=JSON.parse(value);
+    if(decoded.sdCacheFormat!==2||!Array.isArray(decoded.parts))return decoded;
+    if(!decoded.parts.length||decoded.parts.length>30||decoded.parts.some(part=>typeof part!=='string'||!part.startsWith(key+':')))return null;
+    const parts=cache.getAll(decoded.parts);
+    if(decoded.parts.some(part=>typeof parts[part]!=='string'))return null;
+    return JSON.parse(decoded.parts.map(part=>parts[part]).join(''));
   } catch(error) { return null; }
 }
 
 /**
- * Guarda un valor pequeño; evita exceder el límite de 100 KB por entrada de Google.
+ * Guarda resúmenes grandes por bloques, publicando el manifiesto solo al final.
  * @param {string} key - Clave de la entrada.
  * @param {*} value - Valor serializable, sin permisos de usuario.
  */
 function optionalCachePut_(key,value) {
   try {
-    const json=JSON.stringify(value);
-    if(json.length*3>90000) return;
-    CacheService.getScriptCache().put(key,json,APP.CATALOG_CACHE_SECONDS);
+    const json=JSON.stringify(value),cache=CacheService.getScriptCache();
+    if(json.length<=30000){cache.put(key,json,APP.CATALOG_CACHE_SECONDS);return;}
+    if(json.length>870000)return;
+    const generation=Utilities.getUuid(),parts={},keys=[];
+    for(let offset=0;offset<json.length;) {
+      let end=Math.min(offset+30000,json.length);
+      const last=json.charCodeAt(end-1);if(end<json.length&&last>=0xd800&&last<=0xdbff)end--;
+      const part=key+':'+generation+':'+keys.length;keys.push(part);parts[part]=json.slice(offset,end);offset=end;
+    }
+    cache.putAll(parts,APP.CATALOG_CACHE_SECONDS);
+    cache.put(key,JSON.stringify({sdCacheFormat:2,parts:keys}),APP.CATALOG_CACHE_SECONDS);
   } catch(error) { /* La caché es prescindible; Sheets sigue siendo la fuente de verdad. */ }
 }
 
@@ -136,6 +158,6 @@ function syncDataVersion_(actor) {
   return window+':'+hashValue_({revision:revisionState_().global,actor:normalizedRecord_(actor),
     access:[APP.SHEETS.users,APP.SHEETS.commitments,APP.SHEETS.collaborators,APP.SHEETS.approvals,APP.SHEETS.delegations]
       .map(table=>readTable_(table).map(normalizedRecord_)),
-    day:Utilities.formatDate(new Date(),APP.TIME_ZONE,'yyyy-MM-dd'),
+    day:businessToday_(),
     window:window});
 }

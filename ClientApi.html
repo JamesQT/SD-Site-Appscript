@@ -30,6 +30,7 @@
    */
   function rebuildLocalData() {
     const details=Object.values(state.details);
+    state.trackingDate=details.find(d=>d.boardTiming?.asOfDate)?.boardTiming.asOfDate;
     state.data.commitments=details.map(d=>d.commitment);
     state.data.myTasks=details.filter(d=>d.isTask).map(d=>d.commitment);
     state.data.approvals=details.flatMap(d=>d.approvals.filter(a=>a.canDecide).map(a=>Object.assign({},a,{compromiso:d.commitment})));
@@ -37,7 +38,6 @@
     const end=new Date(today+'T12:00:00Z');end.setUTCDate(end.getUTCDate()+7);const soon=end.toISOString().slice(0,10);
     const open=state.data.commitments.filter(c=>['PENDIENTE','EN_CURSO','BLOQUEADO'].includes(c.estado));
     state.data.counts={open:open.length,overdue:open.filter(c=>c.fecha_objetivo&&c.fecha_objetivo<today).length,dueSoon:open.filter(c=>c.fecha_objetivo>=today&&c.fecha_objetivo<=soon).length,blocked:open.filter(c=>c.estado==='BLOQUEADO').length,approvals:state.data.approvals.length,myTasks:state.data.myTasks.length};
-    if(state.data.isAdmin)state.data.team=state.data.people.map(u=>({id:u.usuario_id,name:u.nombre,role:u.rol_sistema,open:open.filter(c=>c.owner_id===u.usuario_id).length,overdue:open.filter(c=>c.owner_id===u.usuario_id&&c.fecha_objetivo&&c.fecha_objetivo<today).length,approvals:details.reduce((n,d)=>n+d.approvals.filter(a=>a.estado==='PENDIENTE'&&a.aprobador_asignado_id===u.usuario_id).length,0)}));
   }
 
   /**
@@ -84,8 +84,9 @@
     const forceRefresh=state.syncForceRequested;state.syncForceRequested=false;
     state.syncPromise=(async()=>{
       try {
-        const delta=await callServer('syncAppData',{versions:versions,metadataVersion:state.metadataVersion,dataVersion:state.dataVersion,force:forceRefresh});
+        const delta=await callServer('syncAppData',{versions:versions,metadataVersion:state.metadataVersion,dataVersion:state.dataVersion,force:forceRefresh,compact:true});
         if(epoch!==state.epoch){state.syncRequested=true;return;}
+        if(delta.removed.length||delta.metadata?.user?.role!==undefined&&delta.metadata.user.role!==state.data.user.role)clearProfileViews(true);
         delta.removed.forEach(id=>{delete state.details[id];delete state.activityCache[id];if(state.detailId===id)$('#detail-dialog').close();});
         delta.details.forEach(d=>{
           const id=d.commitment.compromiso_id,old=state.details[id];
@@ -103,6 +104,7 @@
         setSyncStatus('Sincronización pendiente');
         if(error.code==='AUTH'||(error.code==='FORBIDDEN'&&state.viewRole==='RESPONSABLE')||/no está activo en USUARIOS|Google no devolvió tu correo/.test(error.message)) {
           state.details={};state.activityCache={};state.data=null;
+          clearProfileViews();
           $$('dialog[open]').forEach(d=>d.close());$$('.view').forEach(v=>v.classList.remove('active'));
           $('#user-name').textContent='Sin acceso';$('#user-role').textContent='';$('#user-avatar').textContent='';
           $('#profile-selector-wrap').classList.add('hidden');$('#profile-view-notice').classList.add('hidden');
@@ -134,7 +136,7 @@
   async function refresh() {
     clearError(); $('#loading').classList.remove('hidden');
     try {
-      state.data = await callServer('getAppData');
+      state.data = await callServer('getAppData',{compact:true});
       state.details = Object.fromEntries(state.data.details.map(d => [d.commitment.compromiso_id, d]));
       state.metadataVersion = state.data.metadataVersion;
       state.dataVersion = state.data.dataVersion;
@@ -165,7 +167,8 @@
     $$('.view').forEach(view=>view.classList.remove('active'));
     $('#loading').classList.remove('hidden');$('.main-area').setAttribute('aria-busy','true');
     try {
-      const data=await callServer('getAppData');
+      const data=await callServer('getAppData',{compact:true});
+      clearProfileViews();
       state.data=data;state.details=Object.fromEntries(data.details.map(detail=>[detail.commitment.compromiso_id,detail]));
       state.metadataVersion=data.metadataVersion;state.dataVersion=data.dataVersion;state.admin=null;
       state.activityCache={};state.activity=[];state.activityCursor=null;state.activityBusy=false;state.detailId=null;state.selectedApproval=null;state.draggedCard=null;

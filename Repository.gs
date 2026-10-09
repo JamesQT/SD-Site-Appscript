@@ -96,11 +96,13 @@ function getSheet_(name) {
  */
 function withLock_(callback) {
   const lock = LockService.getScriptLock();
+  const started=Date.now();
   lock.waitLock(10000);
+  const acquired=Date.now();
   try { return withReadContext_('mutation', function () {
     try { return callback(); }
     finally { SpreadsheetApp.flush(); }
-  }); } finally { lock.releaseLock(); }
+  }); } finally { lock.releaseLock();console.info('SD_LOCK '+JSON.stringify({waitMs:acquired-started,heldMs:Date.now()-acquired})); }
 }
 
 /**
@@ -119,7 +121,7 @@ function withReadContext_(label, callback) {
   finally {
     try { persistRevisions_(context); }
     finally { readContext_ = null; catalogIndexes_ = oldCatalogs; }
-    console.info('SD_PERF ' + JSON.stringify({endpoint:label,durationMs:Date.now()-start,tableReads:context.tableReads,spreadsheetOpens:context.spreadsheetOpens}));
+    console.info('SD_PERF ' + JSON.stringify({endpoint:label,durationMs:Date.now()-start,tableReads:context.tableReads,spreadsheetOpens:context.spreadsheetOpens,detailsBuilt:context.detailsBuilt||0}));
   }
 }
 

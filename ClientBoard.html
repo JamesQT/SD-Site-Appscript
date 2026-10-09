@@ -59,10 +59,19 @@
       renderBoard();return;
     }
     if(!UI_CONFIG.openStatus.includes(target)){showToast('Usa Anular con motivo desde el detalle.');renderBoard();return;}
-    state.boardBusy=true;state.mutations++;state.epoch++;renderBoard();
-    try {applyMutation(await callServer('updateCommitment',{compromiso_id:id,expected_version:c._version,changes:{estado:target}}));showToast('Compromiso movido.');}
+    state.boardBusy=true;state.mutations++;state.epoch++;updateBoardInteraction();
+    try {const result=await callServer('updateCommitment',{compromiso_id:id,expected_version:c._version,changes:{estado:target}});state.boardBusy=false;applyMutation(result);showToast('Compromiso movido.');}
     catch(error){mutationError(error);}
-    finally {state.boardBusy=false;state.mutations--;state.epoch++;renderBoard();if(state.syncRequested){state.syncRequested=false;synchronize();}}
+    finally {state.boardBusy=false;state.mutations--;state.epoch++;updateBoardInteraction();if(state.syncRequested){state.syncRequested=false;synchronize();}}
+  }
+
+  /** Bloquea los controles durante el guardado sin reconstruir todas las tarjetas. */
+  function updateBoardInteraction() {
+    $$('#kanban-board [data-card]').forEach(card=>{
+      const detail=state.details[card.dataset.card],enabled=!!detail?.permissions.edit&&!state.boardBusy;
+      card.draggable=enabled;
+      const select=$('[data-board-move]',card);if(select){select.disabled=!enabled;if(detail)select.value=detail.commitment.estado;}
+    });
   }
 
   /**
