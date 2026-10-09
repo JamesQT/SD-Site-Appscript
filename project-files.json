@@ -16,7 +16,8 @@
     "Admin.gs",
     "Notifications.gs",
     "Automation.gs",
-    "Checklist.gs"
+    "Checklist.gs",
+    "Tracking.gs"
   ],
   "html": [
     "Index.html",
@@ -29,6 +30,7 @@
     "ClientApprovals.html",
     "ClientCommitments.html",
     "ClientEvents.html",
-    "ClientBoard.html"
+    "ClientBoard.html",
+    "ClientTracking.html"
   ]
 }

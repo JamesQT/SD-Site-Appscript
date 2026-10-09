@@ -20,6 +20,7 @@
  * @property {Object} permissions - edit, close, reassign y cancel para representación de botones.
  * @property {string} activityVersion - Último ID del historial, sin cargar su contenido.
  * @property {Object} boardTiming - createdOn, stateSince, ageDays y stateDays (null si desconocidos), postponed histórico.
+ * @property {Object} baseline - originalDate, source, delayDays netos y postponementCount auditado.
  * @property {string} _syncVersion - Huella del detalle completo para sincronización.
  */
 

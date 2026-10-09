@@ -183,7 +183,7 @@ function patchRecord_(sheetName,rowNumber,fields) {
  */
 function appendRecords_(sheetName,records) {
   if(!records.length)return;
-  const oldActivity=sheetName===APP.SHEETS.history ? optionalCacheGet_(performanceCacheKey_('activity-v2',sheetName)) : null;
+  const oldActivity=sheetName===APP.SHEETS.history ? optionalCacheGet_(performanceCacheKey_('activity-v3',sheetName)) : null;
   const sheet=getSheet_(sheetName),headers=tableHeaders_(sheetName),start=sheet.getLastRow()+1,last=start+records.length-1;
   if(last>sheet.getMaxRows())sheet.insertRowsAfter(sheet.getMaxRows(),last-sheet.getMaxRows());
   sheet.getRange(start,1,records.length,headers.length).setValues(records.map(record=>headers.map(h=>Object.prototype.hasOwnProperty.call(record,h)?record[h]:'')));

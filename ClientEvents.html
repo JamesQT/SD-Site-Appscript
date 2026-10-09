@@ -15,6 +15,7 @@
     if (!button) return;
     const action=button.dataset.action;
     if(action==='board-detail')return openDetail(button.dataset.id);
+    if(action==='team-kanban') {state.boardOwner=button.dataset.id;$('#board-search').value='';$('#board-mine').checked=false;$('#board-followup').value='';$('#board-postponed').checked=false;renderBoard();return setView('kanban');}
     if(action==='checklist-remove'){button.closest('[data-step]').remove();$('#checklist-form').dataset.dirty='true';return;}
     if(action==='checklist-add'){
       if($$('[data-step]',$('#checklist-items')).length>=40)return showToast('Máximo 40 pasos.');
@@ -117,7 +118,7 @@
       event.preventDefault();
       const current=formObject(form),baseline=JSON.parse(form.dataset.baseline),changes={};
       Object.keys(baseline).forEach(k=>{const value=k==='porcentaje_avance'?Number(current[k]):current[k];if(String(value)!==String(baseline[k]))changes[k]=value;});
-      const payload={compromiso_id:form.dataset.id,expected_version:form.dataset.version,changes:changes};
+      const payload={compromiso_id:form.dataset.id,expected_version:form.dataset.version,changes:changes,motivo_postergacion:current.motivo_postergacion||''};
       if(!Object.keys(changes).length){showToast('No hay cambios para guardar.');return;}
       try { const result=await callServer('updateCommitment',payload); $('#detail-dialog').close();applyMutation(result); showToast('Avance actualizado.'); }
       catch(error) { mutationError(error,form); }
@@ -128,6 +129,7 @@
   /** Registra eventos una sola vez y solicita la instantánea inicial. */
   function startClient() {
     startBoard();
+    startTracking();
     $('#profile-selector').addEventListener('change',switchProfileView);
     document.addEventListener('click',handleClick);
     document.addEventListener('submit',handleSubmit);

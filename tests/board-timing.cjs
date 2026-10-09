@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const {ctx,uuid,rows,sheets,cache,advanceTime,setEmail}=require('./server.cjs');
 const task=ctx.createCommitment({titulo:'Timing task',tipo_id:'N',owner_id:'B',fecha_objetivo:'2026-11-10',request_id:uuid(950)});
 const detail=()=>ctx.getAppData().details.find(d=>d.commitment.compromiso_id===task.id);
-const change=changes=>ctx.updateCommitment({compromiso_id:task.id,expected_version:detail().commitment._version,changes});
+const change=changes=>ctx.updateCommitment({compromiso_id:task.id,expected_version:detail().commitment._version,changes,motivo_postergacion:'Dependencia pendiente'});
 let d=detail();assert.equal(d.boardTiming.ageDays,0);assert.equal(d.boardTiming.stateDays,0);assert.equal(d.boardTiming.postponed,false);
 // Antes y después de medianoche en Lima: días calendario, no bloques de 24 horas ni UTC.
 advanceTime(13*3600000+59*60000);assert.equal(detail().boardTiming.ageDays,0);

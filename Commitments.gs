@@ -9,9 +9,11 @@ function getCommitmentDetail(commitmentId) {
   return withReadContext_('getCommitmentDetail', function () {
     const access = authorizedCommitment_(commitmentId);
     const c = access.commitment;
+    const activity=activityIndex_()[c.compromiso_id]||{};
     const userById = indexBy_(readTable_(APP.SHEETS.users), 'usuario_id');
     return {
       commitment: decorateCommitment_(c, userById),
+      boardTiming:boardTiming_(c,activity),baseline:commitmentBaseline_(c,activity),
       collaborators: readTable_(APP.SHEETS.collaborators).filter(r => isTrue_(r.activo) && r.compromiso_id === commitmentId).map(r => Object.assign({}, r, { nombre: userById[r.usuario_id]?.nombre || r.usuario_id })),
       approvals: readTable_(APP.SHEETS.approvals).filter(r => r.compromiso_id === commitmentId),
       evidence: readTable_(APP.SHEETS.evidence).filter(r => r.compromiso_id === commitmentId)
@@ -62,6 +64,8 @@ function createCommitment(input) {
       ultima_actualizacion: now, creado_por: actor.usuario_id, created_at: now,
       updated_at: now, updated_by: actor.usuario_id, activo: true
     };
+    ensureTrackingSchema_();
+    row.fecha_objetivo_original=due;row.fecha_original_fuente='CREACION';
     appendRecord_(APP.SHEETS.commitments, row);
     logEvent_(id, actor.usuario_id, 'CREATE', '', '', 'PENDIENTE', 'Compromiso creado.');
     notifyEvent_(row, 'ASSIGN', description, [ownerId]);
@@ -114,6 +118,7 @@ function updateCommitment(input) {
       if(key==='fecha_objetivo')value=parseDate_(value,'La fecha objetivo no es válida.');
       if(String(normalizeValue_(value,key))!==String(c[key])){fields[key]=value;events.push({id:c.compromiso_id,user:actor.usuario_id,action:'UPDATE',field:key,old:c[key],value:normalizeValue_(value,key),detail:'Actualización desde SD Control.'});}
     });
+    prepareDueChange_(c,fields,events,p);
     if(events.length){Object.assign(fields,{ultima_actualizacion:new Date(),updated_at:new Date(),updated_by:actor.usuario_id});patchRecord_(APP.SHEETS.commitments,c._row,fields);logEvents_(events);}
     return mutationResult_(c.compromiso_id,actor);
   });

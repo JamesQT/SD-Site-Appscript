@@ -122,6 +122,7 @@ function generateRecurrences_(actorId) {
         if(!known.has(id)) {
           const now=new Date();
           const c={compromiso_id:id,titulo:text_(r.nombre,'Falta el nombre de la recurrencia.',160),descripcion:text_(r.descripcion||'',null,APP.MAX_TEXT),tipo_id:r.tipo_id,subtipo:'',proyecto_id:r.proyecto_id||'',recurrencia_id:r.recurrencia_id,criticidad:r.criticidad||'MEDIA',estado:'PENDIENTE',fecha_creacion:now,fecha_inicio:'',fecha_objetivo:parseDate_(shiftDays_(next,days)),fecha_cierre:'',porcentaje_avance:0,owner_id:r.owner_id,aprobador_actual_id:isTrue_(type.requiere_aprobacion)?approver:'',nivel_aprobacion:r.nivel_aprobacion==='NIVEL_2'?'NIVEL_2':'NIVEL_1',requiere_aprobacion:isTrue_(type.requiere_aprobacion),ultima_actualizacion:now,creado_por:actorId,created_at:now,updated_at:now,updated_by:actorId,activo:true};
+          ensureTrackingSchema_();c.fecha_objetivo_original=c.fecha_objetivo;c.fecha_original_fuente='CREACION';
           appendRecord_(APP.SHEETS.commitments,c);known.add(id);result.generated++;
           logEvent_(id,actorId,'RECURRENCE','','','PENDIENTE','Generación de '+r.recurrencia_id+' para '+next);
           notifyEvent_(c,'ASSIGN','Compromiso periódico.',[c.owner_id]);
