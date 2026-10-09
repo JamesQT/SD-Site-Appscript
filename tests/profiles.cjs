@@ -1,0 +1,26 @@
+/** El perfil reducido se aplica por petición, conserva identidad y nunca altera USUARIOS. */
+const assert=require('node:assert/strict');
+const {ctx,rows,uuid,setEmail}=require('./server.cjs');
+const admin=ctx.getAppData();assert.equal(admin.canSwitchProfile,true);
+const before=JSON.stringify(rows('USUARIOS'));
+const reduced=ctx.runWithProfile('getAppData',[],'RESPONSABLE');
+assert.equal(reduced.user.id,'A');assert.equal(reduced.user.role,'RESPONSABLE');assert.equal(reduced.isAdmin,false);assert.equal(reduced.canSwitchProfile,true);assert.equal(reduced.users.length,0);assert.equal(reduced.recurrences.length,0);
+assert.ok(reduced.commitments.length<admin.commitments.length);
+for(const name of ['getAdminData','initializeFeatures','saveAdminRecord','saveAutomationSettings','runOperationsNow','retryNotification','reassignCommitment'])assert.throws(()=>ctx.runWithProfile(name,[{}],'RESPONSABLE'),/ADMIN/);
+const foreignResult=ctx.createCommitment({titulo:'Foreign profile task',tipo_id:'T',owner_id:'B',aprobador_id:'C',fecha_objetivo:'2026-10-20',request_id:uuid(969)});
+const foreign=foreignResult.detail;
+assert.throws(()=>ctx.runWithProfile('updateCommitment',[{compromiso_id:foreign.commitment.compromiso_id,changes:{descripcion:'Forbidden'}}],'RESPONSABLE'),/permisos/);
+assert.throws(()=>ctx.runWithProfile('getCommitmentActivity',[foreign.commitment.compromiso_id],'RESPONSABLE'),/acceso/);
+const own=ctx.runWithProfile('createCommitment',[{titulo:'Own profile task',tipo_id:'N',owner_id:'B',fecha_objetivo:'2026-10-20',request_id:uuid(970)}],'RESPONSABLE');
+assert.equal(own.detail.commitment.owner_id,'A');assert.equal(own.detail.commitment.creado_por,'A');assert.equal(own.user.role,'RESPONSABLE');assert.equal(own.detail.permissions.reassign,false);
+const args={versions:Object.fromEntries(admin.details.map(d=>[d.commitment.compromiso_id,d._syncVersion])),metadataVersion:admin.metadataVersion,dataVersion:admin.dataVersion};
+const delta=ctx.runWithProfile('syncAppData',[args],'RESPONSABLE');assert.ok(delta.removed.length);assert.equal(delta.metadata.isAdmin,false);
+const saved=ctx.runWithProfile('saveCommitmentChecklist',[{compromiso_id:own.id,expected_version:own.detail.commitment._version,items:[{id:uuid(971),title:'My step',done:true}]}],'RESPONSABLE');assert.equal(saved.detail.commitment.checklist[0].done,true);
+assert.throws(()=>ctx.runWithProfile('withLock_',[],'RESPONSABLE'),/no permitida/);
+assert.throws(()=>ctx.runWithProfile('getAppData',[],'ROOT'),/inválido/);
+assert.equal(ctx.getAppData().isAdmin,true);assert.equal(JSON.stringify(rows('USUARIOS')),before);
+setEmail('owner@example.com');assert.equal(ctx.getAppData().canSwitchProfile,false);
+assert.throws(()=>ctx.runWithProfile('getAppData',[],'ADMIN'),/administrador/);
+assert.throws(()=>ctx.runWithProfile('getAppData',[],'RESPONSABLE'),/administrador/);
+setEmail('admin@example.com');assert.equal(ctx.requireUser_().rol_sistema,'ADMIN');
+console.log('PASS: profile identity, data filtering, administrative denial, own mutations, sync isolation and unchanged stored roles.');

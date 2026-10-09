@@ -63,7 +63,8 @@
    */
   async function openAdminEditor(section,id) {
     if(!state.data.isAdmin) return;
-    if(!state.admin) state.admin=await callServer('getAdminData');
+    const epoch=state.epoch;
+    if(!state.admin){const data=await callServer('getAdminData');if(epoch!==state.epoch||!state.data?.isAdmin||state.profileSwitching)return;state.admin=data;}
     const def=adminDefinitions[section];if(!def) return;
     const record=id?(state.admin[section]||[]).find(r=>String(r[def.key])===id):null;
     if(id&&!record) throw new Error('El registro ya no existe.');
@@ -79,7 +80,9 @@
    * @returns {Promise<void>} Carga y representación de la sección administrativa.
    */
   async function renderAdmin() {
-    if(!state.admin) state.admin=await callServer('getAdminData');
+    if(!state.data?.isAdmin||state.profileSwitching)return;
+    const epoch=state.epoch;
+    if(!state.admin){const data=await callServer('getAdminData');if(epoch!==state.epoch||!state.data?.isAdmin||state.profileSwitching)return;state.admin=data;}
     const key=$('#admin-section').value,rows=state.admin[key]||[],def=adminDefinitions[key];
     $('#admin-new').classList.toggle('hidden',!def);
     $('#automation-enabled').checked=!!state.admin.automation.enabled;

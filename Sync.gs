@@ -31,6 +31,7 @@ function getAppData() {
     details: details,
     user: { id: actor.usuario_id, name: actor.nombre, email: actor.correo_corporativo, role: actor.rol_sistema },
     isAdmin: actor.rol_sistema === 'ADMIN',
+    canSwitchProfile: actualUser_().rol_sistema === 'ADMIN',
     commitments: visible.map(c => decorateCommitment_(c, userById)),
     myTasks: myTasks.map(c => decorateCommitment_(c, userById)),
     people: users.map(u => ({ usuario_id: u.usuario_id, nombre: u.nombre, rol_sistema: u.rol_sistema })),

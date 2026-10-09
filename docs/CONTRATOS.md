@@ -4,6 +4,8 @@ Las fechas de negocio usan `YYYY-MM-DD`, con validación del calendario. Los IDs
 
 ## Lectura y sincronización
 
+`runWithProfile(name, args, role)` ejecuta una operación permitida con el perfil efectivo solicitado; exige una cuenta real ADMIN. `role` admite ADMIN y RESPONSABLE. Las instantáneas incluyen `canSwitchProfile` para mostrar el selector a la cuenta real autorizada. Consultar [PERFILES.md](PERFILES.md).
+
 | Operación | Entrada | Resultado |
 |---|---|---|
 | getAppData | Sin argumentos | AppSnapshot: usuario, detalles autorizados, listas compatibles, referencias, indicadores y versiones. |
