@@ -103,7 +103,7 @@ function buildTeamSummary_(commitments, users, approvals, collaborations) {
  */
 function decorateCommitment_(c, userById) {
   if (!catalogIndexes_) catalogIndexes_ = { types: indexBy_(readTable_(APP.SHEETS.types), 'tipo_id'), projects: indexBy_(readTable_(APP.SHEETS.projects), 'proyecto_id') };
-  return Object.assign({}, c, {
+  const decorated=Object.assign({}, c, {
     owner_name: userById[c.owner_id]?.nombre || c.owner_id || '',
     approver_name: userById[c.aprobador_actual_id]?.nombre || c.aprobador_actual_id || '',
     type_name: (catalogIndexes_.types[c.tipo_id] || {}).nombre || c.tipo_id,
@@ -111,6 +111,8 @@ function decorateCommitment_(c, userById) {
     checklist: checklistItems_(c),
     project_name: c.proyecto_id ? ((catalogIndexes_.projects[c.proyecto_id] || {}).nombre || '') : 'Sin proyecto'
   });
+  delete decorated.dependencias_json;
+  return decorated;
 }
 
 /**
@@ -165,7 +167,7 @@ function groupByCommitment_(rows) {
  * @returns {Object} Índices compartidos de referencias y relaciones.
  */
 function detailContext_(users,collaborations,approvals,delegations) {
-  return {users:indexBy_(users,'usuario_id'),collaborations:groupByCommitment_(collaborations),approvals:groupByCommitment_(approvals),delegations:delegations,evidence:groupByCommitment_(readTable_(APP.SHEETS.evidence)),activity:activityIndex_()};
+  return {users:indexBy_(users,'usuario_id'),collaborations:groupByCommitment_(collaborations),approvals:groupByCommitment_(approvals),allCollaborations:collaborations,allApprovals:approvals,commitments:indexBy_(readTable_(APP.SHEETS.commitments),'compromiso_id'),delegations:delegations,evidence:groupByCommitment_(readTable_(APP.SHEETS.evidence)),activity:activityIndex_()};
 }
 
 /**
@@ -182,6 +184,7 @@ function synchronizedDetail_(c,actor,context) {
   const result={commitment:decorateCommitment_(c,context.users),collaborators:collaborators.map(r=>Object.assign({},r,{nombre:context.users[r.usuario_id]?.nombre||r.usuario_id})),approvals:(context.approvals[c.compromiso_id]||[]).map(a=>Object.assign({},a,{_version:recordVersion_(a),canDecide:a.estado==='PENDIENTE'&&c.estado==='EN_APROBACION'&&canApprove_(a,c,actor,context.delegations)})),evidence:context.evidence[c.compromiso_id]||[],isTask:task,permissions:{edit:open&&(admin||task),close:open&&(admin||c.owner_id===actor.usuario_id),reassign:active&&admin,cancel:active&&(admin||c.owner_id===actor.usuario_id)},activityVersion:(context.activity[c.compromiso_id]||{}).id||''};
   result.boardTiming=boardTiming_(c,context.activity[c.compromiso_id]||{});
   result.baseline=commitmentBaseline_(c,context.activity[c.compromiso_id]||{});
+  result.dependencies=dependencySummary_(c,actor,context);
   result._syncVersion=hashValue_(result);return result;
 }
 

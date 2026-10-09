@@ -15,6 +15,7 @@
     if (!button) return;
     const action=button.dataset.action;
     if(action==='board-detail')return openDetail(button.dataset.id);
+    if(action==='dependency-detail') {if($('#detail-dialog form[data-dirty="true"]'))return showToast('Guarda o cierra tus borradores antes de abrir otro compromiso.');return openDetail(button.dataset.id);}
     if(action==='team-kanban') {state.boardOwner=button.dataset.id;$('#board-search').value='';$('#board-mine').checked=false;$('#board-followup').value='';$('#board-postponed').checked=false;renderBoard();return setView('kanban');}
     if(action==='checklist-remove'){button.closest('[data-step]').remove();$('#checklist-form').dataset.dirty='true';return;}
     if(action==='checklist-add'){
@@ -42,7 +43,7 @@
       const needsApproval = c && (c.requiere_aprobacion === true || String(c.requiere_aprobacion).toUpperCase() === 'TRUE' || c.requiere_aprobacion === 1);
       $('#evidence-dialog .dialog-head p').textContent = needsApproval ? 'El compromiso pasará a aprobación.' : 'El compromiso se cerrará con la evidencia registrada.';
       $('#evidence-form button[type=submit]').textContent = needsApproval ? 'Enviar a aprobación' : 'Cerrar compromiso';
-      $('#evidence-dialog').showModal(); return;
+      prepareEvidenceSelection();$('#evidence-dialog').showModal(); return;
     }
     if (action==='decide') {
       if (!state.selectedApproval || state.deciding) return;
@@ -66,13 +67,14 @@
    */
   async function handleSubmit(event) {
     const form = event.target;
-    if (!['create-form','evidence-form','update-form','feature-form','comment-form','automation-form','checklist-form'].includes(form.id)) return;
+    if (!['create-form','evidence-form','update-form','feature-form','comment-form','automation-form','checklist-form','dependencies-form','file-upload-form'].includes(form.id)) return;
     event.preventDefault();
     if (form.dataset.busy === 'true') return;
     form.dataset.busy = 'true';state.mutations++;state.epoch++;
     const submitButtons = $$('button[type=submit]', form);
     submitButtons.forEach(b => b.disabled = true);
     try {
+    if(['dependencies-form','file-upload-form'].includes(form.id)){await submitCollaborationForm(form);return;}
     if(form.id==='checklist-form') {
       const items=$$('[data-step]',form).map(row=>({id:row.dataset.step,title:row.querySelector('input[type=text]').value,done:row.querySelector('input[type=checkbox]').checked}));
       try {
@@ -130,6 +132,7 @@
   function startClient() {
     startBoard();
     startTracking();
+    startCollaboration();
     $('#profile-selector').addEventListener('change',switchProfileView);
     document.addEventListener('click',handleClick);
     document.addEventListener('submit',handleSubmit);

@@ -17,7 +17,9 @@
     "Notifications.gs",
     "Automation.gs",
     "Checklist.gs",
-    "Tracking.gs"
+    "Tracking.gs",
+    "Dependencies.gs",
+    "Attachments.gs"
   ],
   "html": [
     "Index.html",
@@ -31,6 +33,7 @@
     "ClientCommitments.html",
     "ClientEvents.html",
     "ClientBoard.html",
-    "ClientTracking.html"
+    "ClientTracking.html",
+    "ClientCollaboration.html"
   ]
 }

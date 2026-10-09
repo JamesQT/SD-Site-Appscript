@@ -1,0 +1,153 @@
+<script>
+/** Archivos, requisitos e informes; conserva los borradores del detalle. */
+
+  /**
+   * Representa requisitos autorizados y su edición sin exponer referencias ocultas.
+   * @param {Object} detail - Detalle autorizado.
+   * @returns {string} Sección de dependencias y formulario opcional.
+   */
+  function renderDependencies(detail) {
+    const summary=detail.dependencies||{items:[],pending:0,total:0},c=detail.commitment,editable=detail.permissions.edit&&summary.items.every(item=>item.id);
+    const selected=new Map(summary.items.filter(item=>item.id).map(item=>[item.id,item]));
+    const options=new Map(state.data.commitments.filter(item=>item.compromiso_id!==c.compromiso_id).map(item=>[item.compromiso_id,{id:item.compromiso_id,title:item.titulo}]));
+    selected.forEach((item,id)=>{if(!options.has(id))options.set(id,item);});
+    return `<section class="detail-section" id="dependencies-section"><h3>Dependencias <span class="muted">${summary.pending} pendientes de ${summary.total}</span></h3><p class="muted">Este compromiso requiere que los siguientes estén cerrados antes de enviar o aprobar su cierre. No cambia automáticamente su estado.</p><div class="dependency-summary">${summary.items.map(item=>`<p>${item.done?'✓':'○'} ${item.id&&state.details[item.id]?`<button type="button" class="text-button" data-action="dependency-detail" data-id="${escapeHtml(item.id)}">${escapeHtml(item.title)}</button>`:escapeHtml(item.title)} · ${item.done?'Completado':'Pendiente'}</p>`).join('')||'<p class="muted">Sin requisitos.</p>'}</div>${editable?`<form id="dependencies-form" data-id="${escapeHtml(c.compromiso_id)}" data-version="${escapeHtml(c._version)}"><label class="form-field">Buscar requisito<input type="search" id="dependency-search" placeholder="Título del compromiso"></label><div class="dependency-options">${Array.from(options.values()).sort((a,b)=>a.title.localeCompare(b.title,'es')).map(item=>`<label class="check-field dependency-choice"><input type="checkbox" name="dependency" value="${escapeHtml(item.id)}" ${selected.has(item.id)?'checked':''}>${escapeHtml(item.title)}</label>`).join('')||'<p class="muted">No hay otros compromisos visibles.</p>'}</div><p class="form-error" role="alert"></p><button type="submit" class="button primary">Guardar dependencias</button><p class="muted">Hasta 20 requisitos. No se permiten ciclos.</p></form>`:detail.permissions.edit?'<p class="muted">Hay requisitos sin acceso. Un administrador debe revisarlos para modificarlos.</p>':''}</section>`;
+  }
+
+  /**
+   * Resume requisitos pendientes en la tarjeta Kanban.
+   * @param {Object} dependencies - Resumen autorizado de dependencias.
+   * @returns {string} Bandera informativa de cierre bloqueado.
+   */
+  function renderDependencyBadge(dependencies) {
+    return dependencies?.pending?`<span class="dependency-pill">${dependencies.pending} requisitos pendientes</span>`:'';
+  }
+
+  /**
+   * Construye el formulario de adjunto sin realizar un cierre.
+   * @param {Object} detail - Detalle con permiso de edición.
+   * @returns {string} Formulario de carga o cadena vacía.
+   */
+  function renderFileUpload(detail) {
+    if(!detail.permissions.edit)return '';
+    return `<section class="detail-section"><h3>Adjuntar archivo</h3><form id="file-upload-form" data-id="${escapeHtml(detail.commitment.compromiso_id)}" data-version="${escapeHtml(detail.commitment._version)}" data-request-id="${crypto.randomUUID()}"><label class="form-field">Archivo<input name="archivo" type="file" required accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.docx,.xlsx,.pptx"></label><p class="muted">Máximo 5 MiB. PDF, PNG/JPG/WebP, TXT/CSV y DOCX/XLSX/PPTX. Se guarda en Drive y queda disponible como evidencia; adjuntar no cierra el compromiso.</p><label class="form-field">Descripción<textarea name="comentario" rows="2" required maxlength="2000"></textarea></label><p class="upload-status" role="status"></p><button type="submit" class="button primary">Subir a Drive</button></form></section>`;
+  }
+
+  /**
+   * Lee un archivo pequeño a base64 para google.script.run.
+   * @param {File} file - Archivo seleccionado por el usuario.
+   * @returns {Promise<string>} Contenido base64.
+   */
+  function readUploadFile(file) {
+    return new Promise((resolve,reject)=>{
+      const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('No se pudo leer el archivo.'));reader.readAsDataURL(file);
+    });
+  }
+
+  /**
+   * Guarda un adjunto o requisitos, manteniendo el resto de borradores y sus versiones.
+   * @param {HTMLFormElement} form - Formulario del detalle.
+   * @returns {Promise<void>} Guardado o error presentado en el formulario original.
+   */
+  async function submitCollaborationForm(form) {
+    const error=form.querySelector('.form-error')||form.querySelector('.upload-status');
+    try {
+      let result;
+      if(form.id==='file-upload-form') {
+        const file=form.elements.archivo.files[0];
+        if(!file||!file.size||file.size>5*1024*1024)throw new Error('Selecciona un archivo de hasta 5 MiB.');
+        error.textContent='Subiendo a Drive…';
+        const payload={compromiso_id:form.dataset.id,expected_version:form.dataset.version,request_id:form.dataset.requestId,nombre:file.name,comentario:form.elements.comentario.value};
+        payload.base64=await readUploadFile(file);
+        result=await callServer('uploadCommitmentFile',payload);
+      } else {
+        const ids=Array.from(form.querySelectorAll('[name="dependency"]:checked')).map(input=>input.value);
+        result=await callServer('saveCommitmentDependencies',{compromiso_id:form.dataset.id,expected_version:form.dataset.version,dependencies:ids});
+      }
+      applyMutation(result);
+      if(state.detailId===form.dataset.id&&$('#detail-dialog').open&&result.detail) {
+        const oldVersion=form.dataset.version;
+        ['update-form','checklist-form','file-upload-form','dependencies-form'].forEach(id=>{const sibling=$('#'+id);if(sibling&&sibling.dataset.version===oldVersion)sibling.dataset.version=result.detail.commitment._version;});
+        $('#detail-content').dataset.version=result.detail.commitment._version;
+        if(form.id==='file-upload-form') {
+          form.reset();form.dataset.dirty='false';form.dataset.requestId=crypto.randomUUID();
+          error.textContent='Archivo adjunto. Ya puedes seleccionarlo como evidencia de cierre.';
+          const section=$('#detail-evidence-section');
+          if(section)section.innerHTML='<h3>Evidencias</h3>'+result.detail.evidence.map(e=>`<div class="list-row"><a href="${escapeHtml(e.url_drive)}" target="_blank" rel="noopener">${escapeHtml(e.nombre_archivo||'Evidencia')} ↗</a><small>${dateLabel(e.fecha_subida)}</small></div>`).join('');
+        } else $('#dependencies-section').outerHTML=renderDependencies(result.detail);
+      }
+      showToast(form.id==='file-upload-form'?'Archivo adjunto.':'Dependencias guardadas.');
+    } catch(cause){error.textContent=cause.message;if(cause.code==='CONFLICT')state.syncRequested=true;}
+  }
+
+  /** Prepara la selección de un archivo ya adjunto para el flujo de cierre existente. */
+  function prepareEvidenceSelection() {
+    const form=$('#evidence-form'),detail=state.details[form.elements.compromiso_id.value],seen=new Set();
+    $('#evidence-existing').innerHTML='<option value="">Usar un enlace</option>'+(detail?detail.evidence:[]).filter(e=>e.tipo_evidencia==='ARCHIVO'&&!seen.has(e.drive_file_id)&&seen.add(e.drive_file_id)).map(e=>`<option value="${escapeHtml(e.evidencia_id)}">${escapeHtml(e.nombre_archivo)}</option>`).join('');
+    updateEvidenceSelection();
+  }
+
+  /** Alterna los campos de enlace y el adjunto seleccionado sin perder el flujo de aprobación. */
+  function updateEvidenceSelection() {
+    const form=$('#evidence-form'),existing=!!form.elements.evidencia_id.value;
+    ['nombre','url'].forEach(name=>{form.elements[name].required=!existing;form.elements[name].disabled=existing;});
+    $('#evidence-name-wrap').classList.toggle('hidden',existing);$('#evidence-url-wrap').classList.toggle('hidden',existing);
+  }
+
+  /**
+   * Describe riesgos y decisiones que requieren atención en la reunión.
+   * @param {Object} detail - Detalle autorizado.
+   * @returns {Array<string>} Señales del compromiso.
+   */
+  function meetingRisks(detail) {
+    const c=detail.commitment,risks=[];
+    if(matchesFollowup(detail,'overdue'))risks.push('Vencido: acordar recuperación');
+    if(c.estado==='BLOQUEADO')risks.push('Bloqueado: resolver impedimento');
+    if(detail.dependencies?.pending)risks.push(`${detail.dependencies.pending} requisitos pendientes`);
+    if(c.estado==='EN_APROBACION')risks.push('Decisión de aprobación pendiente');
+    if(matchesFollowup(detail,'stale'))risks.push('7 días o más sin cambiar de estado');
+    if(detail.boardTiming?.postponed)risks.push(`${detail.baseline?.postponementCount||1} postergaciones registradas`);
+    return risks;
+  }
+
+  /** Construye el informe sobre la instantánea y los filtros actuales, sin consultas adicionales. */
+  function renderMeetingReport() {
+    if(!state.data){$('#meeting-report').replaceChildren();return;}
+    const owner=$('#report-owner'),project=$('#report-project'),previousOwner=owner.value,previousProject=project.value;
+    const owners=new Map(state.data.people.map(p=>[p.usuario_id,p.nombre]));
+    state.data.commitments.forEach(c=>{if(!owners.has(c.owner_id))owners.set(c.owner_id,c.owner_name||c.owner_id);});
+    owner.innerHTML='<option value="">Todos</option>'+Array.from(owners).sort((a,b)=>a[1].localeCompare(b[1],'es')).map(([id,name])=>`<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join('');owner.value=owners.has(previousOwner)?previousOwner:'';
+    const projects=new Map(state.data.commitments.filter(c=>c.proyecto_id).map(c=>[c.proyecto_id,c.project_name]));
+    project.innerHTML='<option value="">Todos</option><option value="__none">Sin proyecto</option>'+Array.from(projects).map(([id,name])=>`<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join('');project.value=previousProject==='__none'||projects.has(previousProject)?previousProject:'';
+    const from=$('#report-from').value,to=$('#report-to').value,mode=$('#report-mode').value;
+    const invalid=!!from&&!!to&&from>to;$('#report-error').textContent=invalid?'La fecha inicial debe ser anterior o igual a la final.':'';
+    $('#report-download').disabled=invalid;$('#report-print').disabled=invalid;if(invalid){$('#meeting-report').replaceChildren();return;}
+    const details=Object.values(state.details).filter(d=>{
+      const c=d.commitment;return (!owner.value||c.owner_id===owner.value)&&(!project.value||(project.value==='__none'?!c.proyecto_id:c.proyecto_id===project.value))&&(!from||c.fecha_objetivo&&c.fecha_objetivo>=from)&&(!to||c.fecha_objetivo&&c.fecha_objetivo<=to)&&(mode==='all'||!['CERRADO','ANULADO'].includes(c.estado))&&(mode!=='risk'||meetingRisks(d).length);
+    }).sort((a,b)=>meetingRisks(b).length-meetingRisks(a).length||(a.commitment.fecha_objetivo||'9999').localeCompare(b.commitment.fecha_objetivo||'9999'));
+    const scope=[owner.selectedOptions[0]?.textContent,project.selectedOptions[0]?.textContent,from?'Desde '+dateLabel(from):'Sin fecha inicial',to?'Hasta '+dateLabel(to):'Sin fecha final',$('#report-mode').selectedOptions[0].textContent].join(' · ');
+    const counts=[['Compromisos',details.length],['Vencidos',details.filter(d=>matchesFollowup(d,'overdue')).length],['Con requisitos pendientes',details.filter(d=>d.dependencies?.pending).length],['Por aprobar',details.filter(d=>d.commitment.estado==='EN_APROBACION').length]];
+    $('#meeting-report').innerHTML=`<header><h2>SD Control · Informe de seguimiento</h2><p>Datos sincronizados al ${dateLabel(trackingToday())} · ${escapeHtml(scope)}</p><p class="muted">Solo incluye compromisos visibles para ${escapeHtml(state.data.user.name)}. Las fechas del filtro corresponden a la entrega actual.</p></header><div class="stat-grid">${counts.map(([label,value])=>`<article class="stat"><span>${label}</span><strong>${value}</strong></article>`).join('')}</div><div class="report-table-wrap"><table class="meeting-table"><thead><tr><th>Compromiso y responsable</th><th>Estado / avance</th><th>Fechas de entrega</th><th>Riesgos y decisiones pendientes</th></tr></thead><tbody>${details.map(d=>{
+      const c=d.commitment,b=d.baseline||{},risks=meetingRisks(d);
+      return `<tr><td><button class="text-button" data-action="board-detail" data-id="${escapeHtml(c.compromiso_id)}">${escapeHtml(c.titulo)}</button><p>${escapeHtml(c.owner_name)} · ${escapeHtml(c.project_name)}</p></td><td>${statusName(c.estado)} · ${Number(c.porcentaje_avance)||0}%</td><td>${b.source==='REFERENCIA_ACTUAL'?'Referencia':'Original'}: ${dateLabel(b.originalDate)}<br>Actual: ${dateLabel(c.fecha_objetivo)}<br>Desviación neta: ${b.delayDays==null?'—':b.delayDays+' días'}</td><td>${risks.length?risks.map(r=>`<p>${escapeHtml(r)}</p>`).join(''):'Sin alertas registradas'}</td></tr>`;
+    }).join('')||'<tr><td colspan="4">No hay compromisos que cumplan los filtros.</td></tr>'}</tbody></table></div><p class="muted">Las referencias antiguas pueden no representar la fecha original. Los riesgos señalan temas para revisión; las decisiones se registran desde cada compromiso.</p>`;
+  }
+
+  /** Descarga una copia HTML estática del informe filtrado, sin código ni permisos adicionales. */
+  function downloadMeetingReport() {
+    const copy=$('#meeting-report').cloneNode(true);copy.querySelectorAll('button').forEach(button=>button.replaceWith(document.createTextNode(button.textContent)));
+    const html='<!doctype html><html lang="es"><meta charset="utf-8"><title>SD Control - Informe</title><style>body{font:14px Arial;color:#102a43;margin:32px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccd6e6;padding:10px;text-align:left;vertical-align:top}.stat-grid{display:flex;gap:24px}.stat strong{display:block;font-size:24px}p{line-height:1.5}tr{break-inside:avoid}</style><body>'+copy.innerHTML+'</body></html>';
+    const url=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'})),link=document.createElement('a');link.href=url;link.download='SD-Control-informe-'+trackingToday()+'.html';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+
+  /** Registra filtros de informe y controles de adjuntos una sola vez. */
+  function startCollaboration() {
+    $('#evidence-existing').addEventListener('change',updateEvidenceSelection);
+    ['report-owner','report-project','report-from','report-to','report-mode'].forEach(id=>$('#'+id).addEventListener('change',renderMeetingReport));
+    $('#report-download').addEventListener('click',downloadMeetingReport);$('#report-print').addEventListener('click',()=>window.print());
+    document.addEventListener('input',event=>{
+      if(event.target.closest('#file-upload-form'))event.target.closest('form').dataset.requestId=crypto.randomUUID();
+      if(event.target.id==='dependency-search')$$('.dependency-choice').forEach(label=>label.classList.toggle('hidden',!label.textContent.toLowerCase().includes(event.target.value.toLowerCase())));
+    });
+  }
+</script>
