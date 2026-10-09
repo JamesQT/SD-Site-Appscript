@@ -79,19 +79,38 @@ function canCacheCatalog_(table) {
 }
 
 /**
- * Obtiene únicamente el último ID de actividad por compromiso, con caché reconstruible.
+ * Resume última actividad, cambios de estado y postergaciones en una única lectura cacheada.
  * @returns {Object} Índice sin comentarios ni otros contenidos del historial.
  */
 function activityIndex_() {
-  const key=performanceCacheKey_('activity',APP.SHEETS.history);
+  const key=performanceCacheKey_('activity-v2',APP.SHEETS.history);
   const cached=readContext_ && readContext_.bypassCache ? null : optionalCacheGet_(key);
   if(cached) return cached;
   const index=readTable_(APP.SHEETS.history).reduce((out,row)=>{
-    if(row.compromiso_id) out[row.compromiso_id]=row.historial_id;
+    accumulateActivity_(out,row);
     return out;
   },Object.create(null));
   optionalCachePut_(key,index);
   return index;
+}
+
+/**
+ * Acumula un evento en orden de escritura; solo un aumento real de fecha marca postergación.
+ * @param {Object} index - Resumen mutable por compromiso.
+ * @param {Object} row - Evento normalizado o recién escrito en HISTORIAL.
+ */
+function accumulateActivity_(index,row) {
+  if(!row.compromiso_id) return;
+  const entry=index[row.compromiso_id]||(index[row.compromiso_id]={id:'',stateChangedAt:'',state:'',postponed:false});
+  entry.id=row.historial_id;
+  if(row.campo==='estado' && row.valor_anterior && row.valor_nuevo && row.valor_anterior!==row.valor_nuevo) {
+    entry.stateChangedAt=normalizeValue_(row.fecha_evento,'fecha_evento');
+    entry.state=row.valor_nuevo;
+  }
+  if(row.campo==='fecha_objetivo') {
+    const before=toIsoDate_(row.valor_anterior),after=toIsoDate_(row.valor_nuevo);
+    if(before && after && after>before) entry.postponed=true;
+  }
 }
 
 /**
@@ -101,8 +120,8 @@ function activityIndex_() {
  */
 function extendActivityIndex_(records,previous) {
   if(!previous) return;
-  records.forEach(row=>{if(row.compromiso_id) previous[row.compromiso_id]=row.historial_id;});
-  optionalCachePut_(performanceCacheKey_('activity',APP.SHEETS.history),previous);
+  records.forEach(row=>accumulateActivity_(previous,row));
+  optionalCachePut_(performanceCacheKey_('activity-v2',APP.SHEETS.history),previous);
 }
 
 /**

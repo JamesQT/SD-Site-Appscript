@@ -18,6 +18,8 @@ Las fechas de negocio usan `YYYY-MM-DD`, con validación del calendario. Los IDs
 
 `nextCursor` es una fila exclusiva. Para cargar otra página, se envía el cursor anterior; `null` indica fin. `activityVersion` corresponde al evento más reciente del compromiso, también al consultar páginas antiguas. Si el historial se reordena manualmente, conviene volver a cargarlo desde el comienzo.
 
+Cada detalle autorizado incluye `boardTiming: {createdOn, stateSince, ageDays, stateDays, postponed}`. Las fechas usan YYYY-MM-DD y los días se calculan en Lima. Un contador desconocido es `null`; `postponed` es verdadero si existe alguna postergación auditada. Estos indicadores participan en `_syncVersion`, sin modificar `commitment._version`. Consultar [KANBAN.md](KANBAN.md).
+
 ## Escrituras de compromisos
 
 | Operación | Datos requeridos | Condiciones principales |

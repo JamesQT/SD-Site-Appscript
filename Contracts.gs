@@ -19,6 +19,7 @@
  * @property {boolean} isTask - Pertenece a las tareas del usuario actual.
  * @property {Object} permissions - edit, close, reassign y cancel para representación de botones.
  * @property {string} activityVersion - Último ID del historial, sin cargar su contenido.
+ * @property {Object} boardTiming - createdOn, stateSince, ageDays y stateDays (null si desconocidos), postponed histórico.
  * @property {string} _syncVersion - Huella del detalle completo para sincronización.
  */
 
