@@ -8,7 +8,7 @@
    * @returns {Promise<*>} Respuesta del servidor o rechazo con code y message.
    */
   function callServer(name, ...args) {
-    const allowed=['getAppData','syncAppData','getCommitmentActivity','getAdminData','createCommitment','updateCommitment','submitEvidence','decideApproval','reassignCommitment','cancelCommitment','addCommitmentComment','saveAdminRecord','initializeFeatures','saveAutomationSettings','runOperationsNow','retryNotification','saveCommitmentChecklist'];
+    const allowed=['getAppData','syncAppData','getCommitmentActivity','getAdminData','createCommitment','updateCommitment','submitEvidence','decideApproval','reassignCommitment','cancelCommitment','addCommitmentComment','saveAdminRecord','initializeFeatures','saveAutomationSettings','runOperationsNow','retryNotification','saveCommitmentChecklist','saveCommitmentDependencies','uploadCommitmentFile'];
     if(!allowed.includes(name)) return Promise.reject(new Error('Operación no permitida.'));
     const started = performance.now();
     const report = outcome => {
@@ -64,6 +64,7 @@
     if(result.user){state.data.user=result.user;state.data.isAdmin=result.user.role==='ADMIN';}
     if(result.remove){delete state.details[result.id];delete state.activityCache[result.id];if(state.detailId===result.id)$('#detail-dialog').close();}
     if(result.detail){state.details[result.id]=result.detail;}
+    if(Object.values(state.details).some(d=>d.dependencies?.items.some(item=>item.id===result.id)))state.syncRequested=true;
     rebuildLocalData();renderApp();
     setSyncStatus('Cambio guardado · '+new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}));
   }

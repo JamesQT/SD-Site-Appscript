@@ -21,6 +21,7 @@
  * @property {string} activityVersion - Último ID del historial, sin cargar su contenido.
  * @property {Object} boardTiming - createdOn, stateSince, ageDays y stateDays (null si desconocidos), postponed histórico.
  * @property {Object} baseline - originalDate, source, delayDays netos y postponementCount auditado.
+ * @property {Object} dependencies - items autorizados, pending y total; las referencias ocultas no incluyen ID.
  * @property {string} _syncVersion - Huella del detalle completo para sincronización.
  */
 
@@ -55,6 +56,8 @@
  * @property {string} [approvalId] - Aprobación creada al enviar evidencia.
  * @property {string} [state] - Estado posterior al envío de evidencia.
  * @property {Object} [comment] - Evento COMMENT guardado o recuperado por idempotencia.
+ * @property {string} [archivo_id] - ID de Drive del archivo adjuntado.
+ * @property {string} [evidencia_id] - Registro de evidencia para seleccionar en el cierre.
  */
 
 /**

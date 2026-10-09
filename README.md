@@ -9,7 +9,7 @@ Corrección 3.0.1: si instalaste la entrega modular inicial y aparece **Malforme
 ## Actualización de la aplicación
 
 1. Conserva una copia del proyecto y del Sheet.
-2. Reemplaza **Code.gs, Index.html, Client.html y Styles.html** y crea los nuevos módulos. **Ahora necesitas todos los 18 archivos .gs y 12 HTML de la raíz**, enumerados en project-files.json. No subas las carpetas tests, tools o docs. Sigue la [guía de instalación](docs/DESPLIEGUE.md).
+2. Reemplaza **Code.gs, Index.html, Client.html y Styles.html** y crea los nuevos módulos. **Ahora necesitas todos los 20 archivos .gs y 13 HTML de la raíz**, enumerados en project-files.json. No subas las carpetas tests, tools o docs. Sigue la [guía de instalación](docs/DESPLIEGUE.md).
 3. Guarda y actualiza la implementación para utilizar la nueva versión.
 4. Ingresa como ADMIN y abre **Administración → Preparar o actualizar tablas**. Se añaden los encabezados faltantes al final de las hojas existentes y se crea NOTIFICACIONES, conservando datos, IDs y columnas adicionales. También se instalan los disparadores de edición y cambio estructural para detectar cambios directos en Sheets. Puedes repetir esta acción. Si hay encabezados duplicados, corrígelos primero.
 5. En Automatización y correos, marca **Activar ejecución cada hora** y, para enviar avisos, **Enviar notificaciones por correo**. Guarda la configuración con el administrador que se hará cargo. Google requiere autorizar correo y disparadores; completa el consentimiento si la implementación lo solicita.
@@ -26,6 +26,8 @@ Antes de desactivar una persona, reasigna sus compromisos y aprobaciones pendien
 El alta en USUARIOS **no comparte el Sheet ni concede acceso al despliegue**. La identidad se obtiene del correo de Google activo. Al ejecutar como el usuario que accede, cada persona necesita permisos sobre el Sheet. Limita la audiencia según la organización. Los permisos de la web no impiden las ediciones directas de alguien que ya tenga acceso de edición a las hojas.
 
 ## Compromisos y seguimiento
+
+La versión 3.4 permite **adjuntar archivos desde el detalle**, definir **dependencias de cierre** y preparar un **informe para reuniones** desde el menú Informe. Consulta [la guía de archivos, dependencias e informes](docs/COLABORACION.md). El primer uso de Drive puede exigir autorizar nuevos permisos de Google.
 
 Kanban incluye filtros de seguimiento y línea base de entrega; el menú Calendario organiza vencimientos por mes y Equipo muestra carga, riesgos y cumplimiento histórico. Postergar exige motivo. Consulta [la guía de seguimiento](docs/SEGUIMIENTO.md) para criterios y compatibilidad con registros antiguos.
 

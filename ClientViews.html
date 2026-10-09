@@ -23,6 +23,7 @@
     $$('.admin-only').forEach(el => el.classList.toggle('hidden', !d.isAdmin));
     if (!$('#create-dialog').open) fillCreateOptions(); renderDashboard(); renderCommitmentTables(); renderApprovals(); renderBoard();
     renderCalendar();
+    renderMeetingReport();
     if (d.isAdmin) { renderRecurrences(); renderTeam(); }
   }
 
@@ -146,7 +147,7 @@
     if (['recurrentes','equipo','admin'].includes(name) && !state.data.isAdmin) return showToast('Vista disponible para el perfil ADMIN.');
     $$('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+name));
     $$('.nav-item[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));
-    $('#breadcrumb-current').textContent=({inicio:'Inicio',kanban:'Kanban',calendario:'Calendario',compromisos:'Compromisos','mis-tareas':'Mis tareas',aprobaciones:'Aprobaciones',recurrentes:'Línea base',equipo:'Equipo',admin:'Administración'})[name]||name;
+    $('#breadcrumb-current').textContent=({inicio:'Inicio',kanban:'Kanban',calendario:'Calendario',informe:'Informe',compromisos:'Compromisos','mis-tareas':'Mis tareas',aprobaciones:'Aprobaciones',recurrentes:'Línea base',equipo:'Equipo',admin:'Administración'})[name]||name;
     if (name==='admin') renderAdmin().catch(showError);
   }
 

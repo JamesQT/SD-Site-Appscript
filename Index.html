@@ -14,6 +14,7 @@
           <button class="nav-item active" data-view="inicio"><span>⌂</span>Inicio</button>
           <button class="nav-item" data-view="kanban"><span>▦</span>Kanban</button>
           <button class="nav-item" data-view="calendario"><span>▤</span>Calendario</button>
+          <button class="nav-item" data-view="informe"><span>▥</span>Informe</button>
           <button class="nav-item" data-view="compromisos"><span>▤</span>Compromisos</button>
           <button class="nav-item" data-view="mis-tareas"><span>✓</span>Mis tareas</button>
           <button class="nav-item" data-view="aprobaciones"><span>◎</span>Aprobaciones <b id="approval-badge" class="nav-badge">0</b></button>
@@ -60,6 +61,11 @@
           <div class="page-head"><div><h1>Calendario de compromisos</h1><p>Entregas por fecha objetivo actual. Selecciona una tarjeta para abrir el detalle.</p></div></div>
           <div class="toolbar calendar-toolbar"><button class="button" data-calendar-shift="-1" aria-label="Mes anterior">←</button><label class="tracking-control">Mes<input class="control" type="month" id="calendar-month"></label><button class="button" data-calendar-shift="1" aria-label="Mes siguiente">→</button><button class="button" id="calendar-today">Hoy</button><label class="tracking-control">Responsable<select class="control" id="calendar-owner"></select></label><label class="tracking-control">Mostrar<select class="control" id="calendar-state"><option value="active">Pendientes de cierre</option><option value="all">Todos los estados</option></select></label></div>
           <h2 id="calendar-title"></h2><p id="calendar-count" class="muted" role="status"></p><div id="calendar-grid" class="calendar-grid"></div><div id="calendar-undated" class="detail-section"></div>
+        </section>
+        <section class="view" id="view-informe">
+          <div class="page-head"><div><h1>Informe para reuniones</h1><p>Resumen de los compromisos que puedes consultar, con riesgos y decisiones pendientes.</p></div><div class="dialog-actions report-actions"><button type="button" class="button" id="report-download">Descargar informe</button><button type="button" class="button primary" id="report-print">Imprimir / PDF</button></div></div>
+          <div class="toolbar report-filters"><label class="tracking-control">Responsable<select id="report-owner" class="control"></select></label><label class="tracking-control">Proyecto<select id="report-project" class="control"></select></label><label class="tracking-control">Fecha objetivo desde<input id="report-from" type="date" class="control"></label><label class="tracking-control">Hasta<input id="report-to" type="date" class="control"></label><label class="tracking-control">Contenido<select id="report-mode" class="control"><option value="active">Pendientes de cierre</option><option value="risk">Solo con riesgos o decisiones pendientes</option><option value="all">Todos los estados</option></select></label></div>
+          <p id="report-error" class="form-error" role="alert"></p><div id="meeting-report"></div>
         </section>
         <section class="view" id="view-compromisos">
           <div class="page-head"><div><h1>Compromisos</h1><p>Consulta responsable, fecha, estado y criticidad.</p></div><button class="button primary" data-action="open-create">＋ Nuevo compromiso</button></div>
@@ -123,8 +129,9 @@
       <form id="evidence-form" method="dialog">
         <div class="dialog-head"><div><h2>Enviar evidencia</h2><p>El compromiso pasará a aprobación.</p></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div>
         <input type="hidden" name="compromiso_id">
-        <label class="form-field">Nombre de la evidencia<input name="nombre" required maxlength="180" placeholder="Ej.: Reporte validado"></label>
-        <label class="form-field">Enlace de Drive<input name="url" type="url" required placeholder="https://drive.google.com/…"></label>
+        <label class="form-field">Evidencia<select name="evidencia_id" id="evidence-existing"><option value="">Usar un enlace</option></select></label>
+        <label class="form-field" id="evidence-name-wrap">Nombre de la evidencia<input name="nombre" required maxlength="180" placeholder="Ej.: Reporte validado"></label>
+        <label class="form-field" id="evidence-url-wrap">Enlace de Drive<input name="url" type="url" required placeholder="https://drive.google.com/…"></label>
         <label class="form-field">Comentario de cierre<textarea name="comentario" rows="3" required maxlength="2000"></textarea></label>
         <div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">Cancelar</button><button type="submit" class="button primary">Enviar a aprobación</button></div>
       </form>

@@ -26,7 +26,9 @@ Cada detalle autorizado incluye `boardTiming: {createdOn, stateSince, ageDays, s
 |---|---|---|
 | createCommitment | `titulo, tipo_id, fecha_objetivo, request_id`; ADMIN también `owner_id`; `aprobador_id` si aplica | Referencias activas; responsable distinto del aprobador; UUID v4 para reintentos. |
 | updateCommitment | `compromiso_id, expected_version, changes` | Estado abierto, permiso de gestión y versión actual. |
-| submitEvidence | `compromiso_id, expected_version, url, comentario`; `nombre` opcional en el servidor | Responsable o ADMIN; estado abierto; HTTPS; aprobación o cierre directo según el compromiso. |
+| submitEvidence | `compromiso_id, expected_version, comentario`; `url` o `evidencia_id`; `nombre` opcional para enlace | Responsable o ADMIN; estado abierto; requisitos cerrados; HTTPS o archivo previamente adjunto al mismo compromiso. |
+| uploadCommitmentFile | `compromiso_id, expected_version, request_id, nombre, base64, comentario` | Responsable o ADMIN; versión obligatoria; máximo 5 MiB; UUID v4 ligado al archivo, autor y compromiso. Adjuntar no cambia estado. |
+| saveCommitmentDependencies | `compromiso_id, expected_version, dependencies` | Responsable o ADMIN; abierto, versión obligatoria, hasta 20 IDs visibles, sin duplicados, autorreferencias ni ciclos. |
 | decideApproval | `aprobacion_id, expected_version, approval_version, decision, comentario` | Solicitud pendiente y decisión APROBAR o DEVOLVER; actor asignado o delegado vigente; no autocierre. |
 | reassignCommitment | `compromiso_id, expected_version, owner_id, aprobador_id, motivo` | ADMIN; compromiso no cerrado ni anulado; referencias activas y coherentes. |
 | cancelCommitment | `compromiso_id, expected_version, motivo` | Responsable o ADMIN; compromiso no cerrado ni anulado. |
@@ -43,6 +45,8 @@ Los detalles incluyen `baseline: {originalDate, source, delayDays, postponementC
 Las versiones proceden de la vista que el usuario abrió, no de una actualización silenciosa posterior. La interfaz siempre las envía. Para compatibilidad con integraciones anteriores, el servidor conserva la entrada antigua de actualización y permite omitir versiones; cualquier integración nueva debe usar el contrato de versión documentado.
 
 Una respuesta MutationResult contiene `{ok, id, user}` y `detail` si sigue siendo visible, o `remove: true` si se perdió acceso. Envío de evidencia añade `state` y, cuando aplica, `approvalId`; comentarios añaden `comment`. El navegador actualiza su estado solo después de una respuesta exitosa.
+
+Subir archivo añade `archivo_id` y `evidencia_id`. Su UUID permite recuperar la misma evidencia tras un error de comunicación, incluso si posteriormente se cerró el compromiso, siempre con permiso actual. Reutilizarlo con otro contenido, nombre, descripción, autor o compromiso produce CONFLICT. Los detalles sincronizados incorporan `dependencies: {items, pending, total}`; una referencia inaccesible solo contiene un título genérico y `done`. El JSON interno de IDs no se envía al cliente. Enviar evidencia y decidir APROBAR comprueban requisitos activos y cerrados bajo bloqueo; DEVOLVER permanece disponible.
 
 Crear y comentar conservan su UUID ante errores de comunicación. Un UUID repetido recupera el resultado anterior; no representa una nueva operación. Un comentario no puede reutilizar el UUID de otro compromiso o autor. Evidencia y decisión también validan estado y versión: repetir el envío después de completarlo se rechaza en lugar de crear otra solicitud. La entrega de correo no puede garantizar exactamente una entrega entre servicios; ENVIANDO requiere revisión manual.
 

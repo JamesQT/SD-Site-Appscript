@@ -1,0 +1,56 @@
+/** Archivos y dependencias con servicios Google simulados y comprobaciones de efectos. */
+const assert=require('node:assert/strict');
+const {ctx,rows,uuid,io,setEmail,sheets,props}=require('./server.cjs');
+const {files,folders,faults}=require('./drive-mock.cjs').installDriveMock(ctx);
+const create=(n,owner='B',type='N')=>ctx.createCommitment({titulo:'Collaboration '+n,tipo_id:type,owner_id:owner,aprobador_id:type==='T'?'C':'',fecha_objetivo:'2026-11-10',request_id:uuid(n)});
+const detail=id=>ctx.getAppData().details.find(d=>d.commitment.compromiso_id===id);
+const prerequisite=create(970),task=create(971),third=create(972);
+const save=(id,dependencies)=>ctx.saveCommitmentDependencies({compromiso_id:id,expected_version:detail(id).commitment._version,dependencies});
+const uploaded={compromiso_id:task.id,expected_version:detail(task.id).commitment._version,request_id:uuid(975),nombre:'evidencia.pdf',base64:Buffer.from('%PDF-mock').toString('base64'),comentario:'Resultado validado'};
+let before=io.writes;
+assert.throws(()=>save(task.id,[task.id]),/sí mismo/);assert.equal(io.writes,before);
+save(task.id,[prerequisite.id]);assert.equal(detail(task.id).dependencies.pending,1);
+save(third.id,[task.id]);before=io.writes;
+assert.throws(()=>save(prerequisite.id,[third.id]),/ciclo/);assert.equal(io.writes,before);
+assert.throws(()=>save(task.id,[prerequisite.id,prerequisite.id]),/duplicados/);
+const staleVersion=uploaded.expected_version;
+assert.throws(()=>ctx.uploadCommitmentFile(uploaded),e=>e.code==='CONFLICT');assert.equal(files.size,0);
+uploaded.expected_version=detail(task.id).commitment._version;
+assert.throws(()=>ctx.uploadCommitmentFile({...uploaded,nombre:'archivo.exe'}),e=>e.code==='VALIDATION');assert.equal(files.size,0);
+assert.throws(()=>ctx.uploadCommitmentFile({...uploaded,base64:'%%%%'}),e=>e.code==='VALIDATION');
+assert.throws(()=>ctx.uploadCommitmentFile({...uploaded,base64:'A'.repeat(7*1024*1024)}),e=>e.code==='VALIDATION');
+setEmail('approver@example.com');assert.throws(()=>ctx.uploadCommitmentFile(uploaded),e=>e.code==='FORBIDDEN');assert.equal(files.size,0);setEmail('admin@example.com');
+const result=ctx.uploadCommitmentFile(uploaded);assert.equal(files.size,1);assert.equal(result.detail.commitment.estado,'PENDIENTE');
+assert.equal(result.detail.evidence.find(e=>e.evidencia_id===result.evidencia_id).tipo_evidencia,'ARCHIVO');
+assert.ok(files.get(result.archivo_id).viewers.has('owner@example.com'));assert.ok(files.get(result.archivo_id).viewers.has('admin@example.com'));
+ctx.uploadCommitmentFile(uploaded);assert.equal(files.size,1);assert.equal(rows('EVIDENCIAS').filter(e=>e.evidencia_id===result.evidencia_id).length,1);
+assert.throws(()=>ctx.uploadCommitmentFile({...uploaded,comentario:'Otro contenido de solicitud'}),e=>e.code==='CONFLICT');
+before=io.writes;assert.throws(()=>ctx.submitEvidence({compromiso_id:task.id,evidencia_id:result.evidencia_id,comentario:'Cerrar'}),/dependencias pendientes/);assert.equal(io.writes,before);
+ctx.submitEvidence({compromiso_id:prerequisite.id,url:'https://drive.google.com/example',comentario:'Requisito terminado'});
+assert.equal(detail(task.id).dependencies.pending,0);
+const closed=ctx.submitEvidence({compromiso_id:task.id,evidencia_id:result.evidencia_id,comentario:'Cerrar con archivo'});assert.equal(closed.state,'CERRADO');
+assert.equal(rows('EVIDENCIAS').find(e=>e.compromiso_id===task.id&&e.evidencia_id!==result.evidencia_id).drive_file_id,result.archivo_id);
+ctx.uploadCommitmentFile(uploaded);assert.equal(files.size,1,'A lost upload response can be retried after closing');
+// Fallos después de crear en Drive no duplican el archivo al reintentar.
+const retry={...uploaded,compromiso_id:third.id,expected_version:detail(third.id).commitment._version,request_id:uuid(976)};
+faults.share=1;assert.throws(()=>ctx.uploadCommitmentFile(retry),/sharing/);assert.equal(files.size,2);
+ctx.uploadCommitmentFile(retry);assert.equal(files.size,2);
+faults.description=1;const retryDescription={...retry,request_id:uuid(977)};
+assert.throws(()=>ctx.uploadCommitmentFile(retryDescription),/Description/);assert.equal(files.size,3);
+ctx.uploadCommitmentFile(retryDescription);assert.equal(files.size,3);
+// Una dependencia que pierde acceso nunca filtra su ID ni título en la instantánea.
+const hidden=create(978,'A'),own=create(979);save(own.id,[hidden.id]);setEmail('owner@example.com');
+const ownerDetail=detail(own.id);assert.equal(ownerDetail.dependencies.items[0].id,undefined);assert.equal(ownerDetail.commitment.dependencias_json,undefined);
+assert.ok(!JSON.stringify(ownerDetail).includes(hidden.id));assert.ok(!JSON.stringify(ownerDetail).includes('Collaboration 978'));
+assert.throws(()=>ctx.saveCommitmentDependencies({compromiso_id:own.id,expected_version:ownerDetail.commitment._version,dependencies:[hidden.id]}),e=>e.code==='FORBIDDEN');
+setEmail('admin@example.com');save(own.id,[]);assert.equal(detail(own.id).dependencies.total,0);
+// Una edición directa del requisito después del envío también bloquea la aprobación.
+const apr=create(980,'B','T');save(apr.id,[prerequisite.id]);const sent=ctx.submitEvidence({compromiso_id:apr.id,url:'https://drive.google.com/example',comentario:'Revisar'});
+ctx.withLock_(()=>ctx.patchRecord_('COMPROMISOS',rows('COMPROMISOS').find(c=>c.compromiso_id===prerequisite.id)._row,{estado:'ANULADO'}));
+setEmail('approver@example.com');before=io.writes;
+assert.throws(()=>ctx.decideApproval({aprobacion_id:sent.approvalId,decision:'APROBAR'}),/dependencias pendientes/);assert.equal(io.writes,before);
+ctx.decideApproval({aprobacion_id:sent.approvalId,decision:'DEVOLVER',comentario:'Requisito cambió'});setEmail('admin@example.com');
+assert.ok(sheets.COMPROMISOS.rows[0].includes('dependencias_json'));assert.ok(sheets.EVIDENCIAS.rows[0].includes('archivo_hash'));
+props.SD_ENV='PRUEBAS';props.SD_SPREADSHEET_ID='isolated-upload-test';ctx.withReadContext_('test',()=>ctx.evidenceFolder_({usuario_id:'A',nombre:'Admin'}));assert.equal(folders.size,2);
+delete props.SD_ENV;delete props.SD_SPREADSHEET_ID;
+console.log('PASS: cycles, hidden references, closure/approval enforcement, upload access/version/limits, replay/content binding, recovery after Drive failures, evidence selection and environment isolation.');
