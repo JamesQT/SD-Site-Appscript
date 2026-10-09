@@ -179,8 +179,25 @@ function synchronizedDetail_(c,actor,context) {
   const collaborators=context.collaborations[c.compromiso_id]||[];
   const task=c.owner_id===actor.usuario_id||collaborators.some(r=>r.usuario_id===actor.usuario_id&&r.rol==='COLABORADOR');
   const admin=actor.rol_sistema==='ADMIN',open=APP.OPEN_STATUS.includes(c.estado),active=!['CERRADO','ANULADO'].includes(c.estado);
-  const result={commitment:decorateCommitment_(c,context.users),collaborators:collaborators.map(r=>Object.assign({},r,{nombre:context.users[r.usuario_id]?.nombre||r.usuario_id})),approvals:(context.approvals[c.compromiso_id]||[]).map(a=>Object.assign({},a,{_version:recordVersion_(a),canDecide:a.estado==='PENDIENTE'&&c.estado==='EN_APROBACION'&&canApprove_(a,c,actor,context.delegations)})),evidence:context.evidence[c.compromiso_id]||[],isTask:task,permissions:{edit:open&&(admin||task),close:open&&(admin||c.owner_id===actor.usuario_id),reassign:active&&admin,cancel:active&&(admin||c.owner_id===actor.usuario_id)},activityVersion:context.activity[c.compromiso_id]||''};
+  const result={commitment:decorateCommitment_(c,context.users),collaborators:collaborators.map(r=>Object.assign({},r,{nombre:context.users[r.usuario_id]?.nombre||r.usuario_id})),approvals:(context.approvals[c.compromiso_id]||[]).map(a=>Object.assign({},a,{_version:recordVersion_(a),canDecide:a.estado==='PENDIENTE'&&c.estado==='EN_APROBACION'&&canApprove_(a,c,actor,context.delegations)})),evidence:context.evidence[c.compromiso_id]||[],isTask:task,permissions:{edit:open&&(admin||task),close:open&&(admin||c.owner_id===actor.usuario_id),reassign:active&&admin,cancel:active&&(admin||c.owner_id===actor.usuario_id)},activityVersion:(context.activity[c.compromiso_id]||{}).id||''};
+  result.boardTiming=boardTiming_(c,context.activity[c.compromiso_id]||{});
   result._syncVersion=hashValue_(result);return result;
+}
+
+/**
+ * Calcula días calendario en Lima; evita confundir una edición con un cambio de estado.
+ * @param {Object} commitment - Compromiso autorizado.
+ * @param {Object} activity - Resumen reconstruible del historial.
+ * @returns {Object} Antigüedad, días en estado y bandera histórica de postergación.
+ */
+function boardTiming_(commitment,activity) {
+  const today=Utilities.formatDate(new Date(),APP.TIME_ZONE,'yyyy-MM-dd');
+  const created=toIsoDate_(commitment.fecha_creacion||commitment.created_at);
+  const changed=activity.state===commitment.estado && activity.stateChangedAt ? toIsoDate_(activity.stateChangedAt) : '';
+  // Sin un evento registrado, solo Pendiente permite usar la creación como inicio del estado.
+  const stateSince=changed || (commitment.estado==='PENDIENTE' ? created : '');
+  const days=date=>{const elapsed=(Date.parse(today+'T00:00:00Z')-Date.parse(date+'T00:00:00Z'))/86400000;return date && Number.isFinite(elapsed) ? Math.max(0,Math.floor(elapsed)) : null;};
+  return {createdOn:created,stateSince:stateSince,ageDays:days(created),stateDays:days(stateSince),postponed:!!activity.postponed};
 }
 
 /**
