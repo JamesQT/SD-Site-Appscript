@@ -92,7 +92,7 @@
    * @returns {string} Fila HTML con contenido escapado.
    */
   function commitmentRow(c,includeType) {
-    return `<tr data-id="${escapeHtml(c.compromiso_id)}" data-signature="${escapeHtml(commitmentRowSignature(c))}"><td><span class="task-title">${escapeHtml(c.titulo)}</span><span class="task-sub">${escapeHtml(c.compromiso_id)} · ${escapeHtml(c.project_name)}</span></td><td>${escapeHtml(c.owner_name)}</td>${includeType?`<td>${escapeHtml(c.type_name)}</td>`:''}<td>${dateLabel(c.fecha_objetivo)}</td><td><span class="pill ${statusClass(c.estado)}">${statusName(c.estado)}</span></td><td><span class="pill ${criticalityClass(c.criticidad)}">${criticalityName(c.criticidad)}</span></td></tr>`;
+    return `<tr data-id="${escapeHtml(c.compromiso_id)}" data-signature="${escapeHtml(commitmentRowSignature(c))}"><td><span class="task-title">${escapeHtml(c.titulo)}</span><span class="task-sub">${includeType?escapeHtml(c.compromiso_id)+' · ':''}${escapeHtml(c.project_name)}</span></td><td>${escapeHtml(c.owner_name)}</td>${includeType?`<td>${escapeHtml(c.type_name)}</td>`:''}<td>${dateLabel(c.fecha_objetivo)}</td><td><span class="pill ${statusClass(c.estado)}">${statusName(c.estado)}</span></td><td><span class="pill ${criticalityClass(c.criticidad)}">${criticalityName(c.criticidad)}</span></td></tr>`;
   }
 
   /**
