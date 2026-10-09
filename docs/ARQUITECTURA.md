@@ -69,6 +69,8 @@ Las escrituras de la web marcan revisiones y las publican bajo bloqueo, incluso 
 
 Las filas del listado se reutilizan por ID y solo se reemplazan celdas con campos visibles modificados. Los filtros trabajan con índices locales. Una sincronización vacía no reconstruye vistas. Formularios de avance y revisión conservan sus borradores ante cambios externos.
 
+Desde 3.5 la web usa el contrato compacto y renderizado bajo demanda; la sincronización compara fuentes frescas antes de construir detalles. Los resúmenes de caché grandes se fragmentan y se reconstruyen por completo si falta una parte. Ver [RENDIMIENTO.md](RENDIMIENTO.md) para pruebas, resultados y límites.
+
 ## Límites que permanecen
 
 - Sheets no ofrece una transacción entre varias hojas. El bloqueo coordina scripts de este proyecto; no bloquea una edición manual o una escritura desde otro proyecto.

@@ -3,7 +3,7 @@
 
   /** Devuelve el día de la última instantánea del servidor en Lima. */
   function trackingToday() {
-    return Object.values(state.details).find(d=>d.boardTiming?.asOfDate)?.boardTiming.asOfDate||new Intl.DateTimeFormat('en-CA',{timeZone:'America/Lima',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    return state.trackingDate||Object.values(state.details).find(d=>d.boardTiming?.asOfDate)?.boardTiming.asOfDate||new Intl.DateTimeFormat('en-CA',{timeZone:'America/Lima',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   }
 
   /**
@@ -77,13 +77,18 @@
 
   /** Calcula gestión por responsable a partir de detalles autorizados, incluidos antiguos responsables. */
   function teamTrackingMetrics() {
+    const grouped=new Map(),pending=new Map();
+    Object.values(state.details).forEach(d=>{
+      const id=d.commitment.owner_id;if(!grouped.has(id))grouped.set(id,[]);grouped.get(id).push(d);
+      d.approvals.forEach(a=>{if(a.estado==='PENDIENTE')pending.set(a.aprobador_asignado_id,(pending.get(a.aprobador_asignado_id)||0)+1);});
+    });
     const people=new Map(state.data.people.map(p=>[p.usuario_id,{id:p.usuario_id,name:p.nombre,role:p.rol_sistema}]));
     state.data.commitments.forEach(c=>{if(!people.has(c.owner_id))people.set(c.owner_id,{id:c.owner_id,name:c.owner_name||c.owner_id,role:'Responsable anterior'});});
     return Array.from(people.values()).map(person=>{
-      const details=Object.values(state.details).filter(d=>d.commitment.owner_id===person.id),active=details.filter(d=>!['CERRADO','ANULADO'].includes(d.commitment.estado));
+      const details=grouped.get(person.id)||[],active=details.filter(d=>!['CERRADO','ANULADO'].includes(d.commitment.estado));
       const closed=details.filter(d=>d.commitment.estado==='CERRADO'),comparable=closed.filter(d=>d.commitment.fecha_cierre&&d.baseline?.originalDate&&d.baseline.source!=='REFERENCIA_ACTUAL');
       const onTime=comparable.filter(d=>d.commitment.fecha_cierre.slice(0,10)<=d.baseline.originalDate).length;
-      return {...person,open:active.length,overdue:active.filter(d=>matchesFollowup(d,'overdue')).length,blocked:active.filter(d=>d.commitment.estado==='BLOQUEADO').length,postponed:active.filter(d=>d.boardTiming?.postponed).length,stale:active.filter(d=>matchesFollowup(d,'stale')).length,closed:closed.length,onTime:onTime,comparable:comparable.length,compliance:comparable.length?Math.round(onTime/comparable.length*100):null,approvals:Object.values(state.details).reduce((n,d)=>n+d.approvals.filter(a=>a.estado==='PENDIENTE'&&a.aprobador_asignado_id===person.id).length,0)};
+      return {...person,open:active.length,overdue:active.filter(d=>matchesFollowup(d,'overdue')).length,blocked:active.filter(d=>d.commitment.estado==='BLOQUEADO').length,postponed:active.filter(d=>d.boardTiming?.postponed).length,stale:active.filter(d=>matchesFollowup(d,'stale')).length,closed:closed.length,onTime:onTime,comparable:comparable.length,compliance:comparable.length?Math.round(onTime/comparable.length*100):null,approvals:pending.get(person.id)||0};
     }).sort((a,b)=>b.overdue-a.overdue||b.open-a.open||a.name.localeCompare(b.name,'es'));
   }
 

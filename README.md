@@ -27,6 +27,8 @@ El alta en USUARIOS **no comparte el Sheet ni concede acceso al despliegue**. La
 
 ## Compromisos y seguimiento
 
+La versión 3.5 reduce la carga inicial, construye solo detalles modificados al sincronizar y representa las vistas bajo demanda. Incluye métricas de renderizado y bloqueo. Consulta [las optimizaciones y mediciones de rendimiento](docs/RENDIMIENTO.md).
+
 La versión 3.4 permite **adjuntar archivos desde el detalle**, definir **dependencias de cierre** y preparar un **informe para reuniones** desde el menú Informe. Consulta [la guía de archivos, dependencias e informes](docs/COLABORACION.md). El primer uso de Drive puede exigir autorizar nuevos permisos de Google.
 
 Kanban incluye filtros de seguimiento y línea base de entrega; el menú Calendario organiza vencimientos por mes y Equipo muestra carga, riesgos y cumplimiento histórico. Postergar exige motivo. Consulta [la guía de seguimiento](docs/SEGUIMIENTO.md) para criterios y compatibilidad con registros antiguos.

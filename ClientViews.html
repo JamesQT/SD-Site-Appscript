@@ -21,10 +21,31 @@
     $('#stat-approvals').textContent = d.counts.approvals;
     $('#approval-badge').textContent = d.counts.approvals;
     $$('.admin-only').forEach(el => el.classList.toggle('hidden', !d.isAdmin));
-    if (!$('#create-dialog').open) fillCreateOptions(); renderDashboard(); renderCommitmentTables(); renderApprovals(); renderBoard();
-    renderCalendar();
-    renderMeetingReport();
-    if (d.isAdmin) { renderRecurrences(); renderTeam(); }
+    state.renderedViews={};
+    if (!$('#create-dialog').open) fillCreateOptions();
+    renderActiveView($('.view.active')?.id.replace('view-','')||'inicio');
+  }
+
+  /**
+   * Renderiza una vista al necesitarla y reutiliza el DOM durante la revisión local.
+   * @param {string} name - Vista solicitada.
+   */
+  function renderActiveView(name) {
+    if(state.renderedViews?.[name])return;
+    const started=performance.now();
+    const renderers={inicio:renderDashboard,kanban:renderBoard,calendario:renderCalendar,informe:renderMeetingReport,compromisos:renderCommitmentTables,'mis-tareas':renderCommitmentTables,aprobaciones:renderApprovals,recurrentes:renderRecurrences,equipo:renderTeam};
+    if(renderers[name])renderers[name]();
+    if(!state.renderedViews)state.renderedViews={};state.renderedViews[name]=true;
+    console.info('SD_RENDER',{view:name,durationMs:Math.round(performance.now()-started)});
+  }
+
+  /**
+   * Vacía contenido obsoleto tras reducir permisos o cambiar de perfil.
+   * @param {boolean} hiddenOnly - Conserva el DOM y los borradores de la vista abierta.
+   */
+  function clearProfileViews(hiddenOnly=false) {
+    ['dashboard-table','dashboard-inbox','kanban-board','board-owners','calendar-grid','calendar-undated','meeting-report','commitments-table','tasks-table','approval-list','approval-detail','admin-table','recurrences-table','team-grid','team-summary'].forEach(id=>{const element=$('#'+id);if(element&&(!hiddenOnly||!element.closest('.view')?.classList.contains('active')))element.replaceChildren();});
+    state.renderedViews={};
   }
 
   /**
@@ -148,6 +169,7 @@
     $$('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+name));
     $$('.nav-item[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));
     $('#breadcrumb-current').textContent=({inicio:'Inicio',kanban:'Kanban',calendario:'Calendario',informe:'Informe',compromisos:'Compromisos','mis-tareas':'Mis tareas',aprobaciones:'Aprobaciones',recurrentes:'Línea base',equipo:'Equipo',admin:'Administración'})[name]||name;
+    renderActiveView(name);
     if (name==='admin') renderAdmin().catch(showError);
   }
 

@@ -5,12 +5,24 @@ let catalogIndexes_;
 
 /**
  * Construye la instantánea inicial filtrada por los permisos del usuario activo.
+ * @param {Object} options - compact omite listas derivables por el navegador.
  * @returns {AppSnapshot} Resultado serializable para google.script.run.
  */
-function getAppData() {
-  return withReadContext_('getAppData', function () {
+function getAppData(options) {
+  return withReadContext_('getAppData', function () {return appSnapshot_(options);});
+}
+
+/**
+ * Construye metadatos y solo detalles modificados tras revalidar acceso.
+ * @param {Object} options - compact selecciona el contrato ligero.
+ * @param {Object} known - Versiones conocidas; ausente devuelve todos los detalles.
+ * @param {string} currentVersion - Revisión global ya comprobada en esta petición.
+ * @returns {AppSnapshot} Datos autorizados y metadatos.
+ */
+function appSnapshot_(options,known,currentVersion) {
+  const compact=!!options&&options.compact===true;
   const actor = requireUser_();
-  const dataVersion=syncDataVersion_(actor);
+  const dataVersion=currentVersion||syncDataVersion_(actor);
   const all = readTable_(APP.SHEETS.commitments).filter(r => isTrue_(r.activo));
   const users = activeUsers_();
   const userById = indexBy_(readTable_(APP.SHEETS.users), 'usuario_id');
@@ -18,39 +30,44 @@ function getAppData() {
   const allApprovals = readTable_(APP.SHEETS.approvals);
   const approvals = allApprovals.filter(r => r.estado === 'PENDIENTE');
   const delegations = activeDelegations_();
-  const visible = all.filter(c => canViewCommitment_(c, actor, collaborations, approvals, delegations));
-  const myTasks = visible.filter(c => c.owner_id === actor.usuario_id || collaborations.some(x =>
+  const byId=indexBy_(all,'compromiso_id'),collaborationsById=groupByCommitment_(collaborations),approvalsById=groupByCommitment_(approvals);
+  const visible = all.filter(c => canViewCommitment_(c, actor, collaborationsById[c.compromiso_id]||[], approvalsById[c.compromiso_id]||[], delegations));
+  const myTasks = compact?[]:visible.filter(c => c.owner_id === actor.usuario_id || (collaborationsById[c.compromiso_id]||[]).some(x =>
     x.compromiso_id === c.compromiso_id && x.usuario_id === actor.usuario_id && x.rol === 'COLABORADOR'));
-  const myApprovals = approvals.filter(a => {
-    const c = all.find(x => x.compromiso_id === a.compromiso_id);
+  const myApprovals = compact?[]:approvals.filter(a => {
+    const c = byId[a.compromiso_id];
     return c && canApprove_(a, c, actor, delegations);
   });
   const context = detailContext_(readTable_(APP.SHEETS.users), collaborations, allApprovals, delegations);
-  const details = visible.map(c => synchronizedDetail_(c, actor, context));
+  const details=[];
+  visible.forEach(c=>{
+    const version=detailSourceVersion_(c,actor,context);
+    if(!known||known[c.compromiso_id]!==version)details.push(synchronizedDetail_(c,actor,context,version));
+  });
   const snapshot = {
     details: details,
     user: { id: actor.usuario_id, name: actor.nombre, email: actor.correo_corporativo, role: actor.rol_sistema },
     isAdmin: actor.rol_sistema === 'ADMIN',
     canSwitchProfile: actualUser_().rol_sistema === 'ADMIN',
-    commitments: visible.map(c => decorateCommitment_(c, userById)),
+    commitments: compact?[]:visible.map(c => decorateCommitment_(c, userById)),
     myTasks: myTasks.map(c => decorateCommitment_(c, userById)),
     people: users.map(u => ({ usuario_id: u.usuario_id, nombre: u.nombre, rol_sistema: u.rol_sistema })),
     approvals: myApprovals.map(a => {
-      const c = all.find(x => x.compromiso_id === a.compromiso_id);
+      const c = byId[a.compromiso_id];
       return Object.assign({}, a, { compromiso: decorateCommitment_(c, userById) });
     }),
     types: readTable_(APP.SHEETS.types).filter(r => isTrue_(r.activo)),
     projects: readTable_(APP.SHEETS.projects).filter(r => isTrue_(r.activo)),
-    users: actor.rol_sistema === 'ADMIN' ? users : [],
+    users: !compact&&actor.rol_sistema === 'ADMIN' ? users : [],
     recurrences: actor.rol_sistema === 'ADMIN' ? readTable_(APP.SHEETS.recurrences).filter(r => isTrue_(r.activo)) : [],
-    team: actor.rol_sistema === 'ADMIN' ? buildTeamSummary_(all, users, approvals, collaborations) : [],
-    counts: buildCounts_(visible, myTasks, myApprovals)
+    team: !compact&&actor.rol_sistema === 'ADMIN' ? buildTeamSummary_(all, users, approvals, collaborations) : [],
+    counts: compact?null:buildCounts_(visible, myTasks, myApprovals)
   };
+  if(compact)['commitments','myTasks','approvals','users','team','counts'].forEach(key=>delete snapshot[key]);
   snapshot.metadataVersion = hashValue_(snapshotMetadata_(snapshot));
   snapshot.dataVersion=dataVersion;
+  if(known)snapshot.visibleIds=visible.map(c=>c.compromiso_id);
   return snapshot;
-
-  });
 }
 
 /**
@@ -61,7 +78,7 @@ function getAppData() {
  * @returns {Object} Indicadores de apertura, fechas, bloqueo y bandeja.
  */
 function buildCounts_(visible, tasks, approvals) {
-  const today = Utilities.formatDate(new Date(), APP.TIME_ZONE, 'yyyy-MM-dd');
+  const today = businessToday_();
   const open = visible.filter(c => APP.OPEN_STATUS.includes(c.estado));
   return {
     open: open.length,
@@ -84,7 +101,7 @@ function buildCounts_(visible, tasks, approvals) {
 function buildTeamSummary_(commitments, users, approvals, collaborations) {
   return users.map(u => {
     const assigned = commitments.filter(c => c.owner_id === u.usuario_id && APP.OPEN_STATUS.includes(c.estado));
-    const dueToday = Utilities.formatDate(new Date(), APP.TIME_ZONE, 'yyyy-MM-dd');
+    const dueToday = businessToday_();
     return {
       id: u.usuario_id, name: u.nombre, role: u.rol_sistema,
       open: assigned.length,
@@ -167,7 +184,22 @@ function groupByCommitment_(rows) {
  * @returns {Object} Índices compartidos de referencias y relaciones.
  */
 function detailContext_(users,collaborations,approvals,delegations) {
-  return {users:indexBy_(users,'usuario_id'),collaborations:groupByCommitment_(collaborations),approvals:groupByCommitment_(approvals),allCollaborations:collaborations,allApprovals:approvals,commitments:indexBy_(readTable_(APP.SHEETS.commitments),'compromiso_id'),delegations:delegations,evidence:groupByCommitment_(readTable_(APP.SHEETS.evidence)),activity:activityIndex_()};
+  const context={users:indexBy_(users,'usuario_id'),collaborations:groupByCommitment_(collaborations),approvals:groupByCommitment_(approvals),pendingApprovals:groupByCommitment_(approvals.filter(a=>a.estado==='PENDIENTE')),allCollaborations:collaborations,allApprovals:approvals,commitments:indexBy_(readTable_(APP.SHEETS.commitments),'compromiso_id'),delegations:delegations,evidence:groupByCommitment_(readTable_(APP.SHEETS.evidence)),activity:activityIndex_()};
+  context.today=businessToday_();
+  context.referenceVersion=hashValue_([users,readTable_(APP.SHEETS.types),readTable_(APP.SHEETS.projects),delegations,context.today]);
+  return context;
+}
+
+/**
+ * Versiona fuentes frescas para omitir la construcción de detalles sin cambios.
+ * @param {Object} c - Compromiso visible.
+ * @param {Object} actor - Actor efectivo autenticado.
+ * @param {Object} context - Relaciones y referencias de la petición.
+ * @returns {string} Huella que incluye requisitos y permisos actuales.
+ */
+function detailSourceVersion_(c,actor,context) {
+  const id=c.compromiso_id;
+  return hashValue_([normalizedRecord_(c),normalizedRecord_(actor),context.referenceVersion,context.collaborations[id]||[],context.approvals[id]||[],context.evidence[id]||[],context.activity[id]||{},dependencySummary_(c,actor,context)]);
 }
 
 /**
@@ -175,9 +207,11 @@ function detailContext_(users,collaborations,approvals,delegations) {
  * @param {Object} c - Registro del compromiso.
  * @param {Object} actor - Usuario autenticado por el servidor.
  * @param {Object} context - Índices compartidos de relaciones para construir detalles.
+ * @param {string} version - Huella de fuentes ya calculada, opcional.
  * @returns {CommitmentDetail} Detalle y permisos del actor actual.
  */
-function synchronizedDetail_(c,actor,context) {
+function synchronizedDetail_(c,actor,context,version) {
+  if(readContext_)readContext_.detailsBuilt=(readContext_.detailsBuilt||0)+1;
   const collaborators=context.collaborations[c.compromiso_id]||[];
   const task=c.owner_id===actor.usuario_id||collaborators.some(r=>r.usuario_id===actor.usuario_id&&r.rol==='COLABORADOR');
   const admin=actor.rol_sistema==='ADMIN',open=APP.OPEN_STATUS.includes(c.estado),active=!['CERRADO','ANULADO'].includes(c.estado);
@@ -185,7 +219,7 @@ function synchronizedDetail_(c,actor,context) {
   result.boardTiming=boardTiming_(c,context.activity[c.compromiso_id]||{});
   result.baseline=commitmentBaseline_(c,context.activity[c.compromiso_id]||{});
   result.dependencies=dependencySummary_(c,actor,context);
-  result._syncVersion=hashValue_(result);return result;
+  result._syncVersion=version||detailSourceVersion_(c,actor,context);return result;
 }
 
 /**
@@ -195,7 +229,7 @@ function synchronizedDetail_(c,actor,context) {
  * @returns {Object} Antigüedad, días en estado y bandera histórica de postergación.
  */
 function boardTiming_(commitment,activity) {
-  const today=Utilities.formatDate(new Date(),APP.TIME_ZONE,'yyyy-MM-dd');
+  const today=businessToday_();
   const created=toIsoDate_(commitment.fecha_creacion||commitment.created_at);
   const changed=activity.state===commitment.estado && activity.stateChangedAt ? toIsoDate_(activity.stateChangedAt) : '';
   // Sin un evento registrado, solo Pendiente permite usar la creación como inicio del estado.
@@ -210,7 +244,7 @@ function boardTiming_(commitment,activity) {
  * @returns {Object} Metadatos sin las colecciones de detalles ni versiones.
  */
 function snapshotMetadata_(snapshot) {
-  const meta={};Object.keys(snapshot).filter(k=>!['commitments','myTasks','details','metadataVersion','dataVersion'].includes(k)).forEach(k=>meta[k]=snapshot[k]);return meta;
+  const meta={};Object.keys(snapshot).filter(k=>!['commitments','myTasks','details','visibleIds','metadataVersion','dataVersion'].includes(k)).forEach(k=>meta[k]=snapshot[k]);return meta;
 }
 
 /**
@@ -228,7 +262,7 @@ function syncAppData(input) {
     }
     // Un refresco completo revalida también catálogos e índice de actividad externos.
     readContext_.bypassCache=!!p.force || String(p.dataVersion||'').split(':')[0]!==dataVersion.split(':')[0];
-    const snapshot=getAppData(),visible=new Set(snapshot.details.map(d=>d.commitment.compromiso_id));
+    const snapshot=appSnapshot_({compact:p.compact===true},known,dataVersion),visible=new Set(snapshot.visibleIds);
     return {details:snapshot.details.filter(d=>known[d.commitment.compromiso_id]!==d._syncVersion),removed:Object.keys(known).filter(id=>!visible.has(id)),metadata:p.metadataVersion===snapshot.metadataVersion?null:snapshotMetadata_(snapshot),metadataVersion:snapshot.metadataVersion,dataVersion:snapshot.dataVersion};
   });
 }

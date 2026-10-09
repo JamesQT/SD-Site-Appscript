@@ -4,6 +4,7 @@
   const state = { data: null, admin: null, viewRole: 'ADMIN', profileSwitching: false, selectedApproval: null, toastTimer: null, boardOwner: '', boardBusy: false, draggedCard: null, approvalLoad: 0, deciding: false, detailLoad: 0, detailId: null, activityLoad: 0, activity: [], activityCursor: null, activityBusy: false, details: {}, activityCache: {}, metadataVersion: null, dataVersion: null, syncPromise: null, mutations: 0, epoch: 0, syncRequested: false, syncForceRequested: false };
   const $ = (selector, root) => (root || document).querySelector(selector);
   const $$ = (selector, root) => Array.from((root || document).querySelectorAll(selector));
+  const businessDateFormatter=new Intl.DateTimeFormat('es-PE',{day:'2-digit',month:'short',year:'numeric'});
 
   /** Interpreta el indicador booleano recibido de Sheets. */
   const booleanValue = v => v === true || v === 1 || String(v).toUpperCase() === 'TRUE';
@@ -47,7 +48,7 @@
   function dateLabel(value) {
     if (!value) return '—';
     const d = new Date(String(value).slice(0,10) + 'T12:00:00');
-    return isNaN(d.getTime()) ? escapeHtml(value) : d.toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'});
+    return isNaN(d.getTime()) ? escapeHtml(value) : businessDateFormatter.format(d);
   }
 
   /**
