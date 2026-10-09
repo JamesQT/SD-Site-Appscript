@@ -83,7 +83,7 @@ function canCacheCatalog_(table) {
  * @returns {Object} Índice sin comentarios ni otros contenidos del historial.
  */
 function activityIndex_() {
-  const key=performanceCacheKey_('activity-v2',APP.SHEETS.history);
+  const key=performanceCacheKey_('activity-v3',APP.SHEETS.history);
   const cached=readContext_ && readContext_.bypassCache ? null : optionalCacheGet_(key);
   if(cached) return cached;
   const index=readTable_(APP.SHEETS.history).reduce((out,row)=>{
@@ -101,7 +101,7 @@ function activityIndex_() {
  */
 function accumulateActivity_(index,row) {
   if(!row.compromiso_id) return;
-  const entry=index[row.compromiso_id]||(index[row.compromiso_id]={id:'',stateChangedAt:'',state:'',postponed:false});
+  const entry=index[row.compromiso_id]||(index[row.compromiso_id]={id:'',stateChangedAt:'',state:'',postponed:false,firstDue:'',postponementCount:0});
   entry.id=row.historial_id;
   if(row.campo==='estado' && row.valor_anterior && row.valor_nuevo && row.valor_anterior!==row.valor_nuevo) {
     entry.stateChangedAt=normalizeValue_(row.fecha_evento,'fecha_evento');
@@ -109,7 +109,8 @@ function accumulateActivity_(index,row) {
   }
   if(row.campo==='fecha_objetivo') {
     const before=toIsoDate_(row.valor_anterior),after=toIsoDate_(row.valor_nuevo);
-    if(before && after && after>before) entry.postponed=true;
+    if(!entry.firstDue)entry.firstDue=before||after;
+    if(before && after && after>before){entry.postponed=true;entry.postponementCount++;}
   }
 }
 
@@ -121,7 +122,7 @@ function accumulateActivity_(index,row) {
 function extendActivityIndex_(records,previous) {
   if(!previous) return;
   records.forEach(row=>accumulateActivity_(previous,row));
-  optionalCachePut_(performanceCacheKey_('activity-v2',APP.SHEETS.history),previous);
+  optionalCachePut_(performanceCacheKey_('activity-v3',APP.SHEETS.history),previous);
 }
 
 /**

@@ -152,8 +152,10 @@
    * Representa los indicadores del equipo para usuarios administradores.
    */
   function renderTeam() {
-    const rows=state.data.team;
-    $('#team-grid').innerHTML = rows.length ? rows.map(p=>`<article class="team-card"><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.role)}</p><div class="team-metrics"><span><strong>${p.open}</strong>Abiertos</span><span><strong>${p.overdue}</strong>Vencidos</span><span><strong>${p.approvals}</strong>Por aprobar</span></div></article>`).join('') : emptyTable('No hay usuarios activos.');
+    if(!state.data.isAdmin){$('#team-grid').replaceChildren();$('#team-summary').replaceChildren();return;}
+    const rows=teamTrackingMetrics();
+    $('#team-summary').innerHTML=[['Pendientes de cierre','open'],['Vencidos','overdue'],['Bloqueados','blocked'],['Postergados pendientes','postponed']].map(([title,key])=>`<article class="stat"><span>${title}</span><strong>${rows.reduce((sum,p)=>sum+p[key],0)}</strong></article>`).join('');
+    $('#team-grid').innerHTML = rows.length ? rows.map(p=>`<article class="team-card" data-team-person="${escapeHtml(p.id)}"><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.role)}</p><div class="team-metrics tracking-team-metrics">${[['Pendientes de cierre',p.open],['Vencidos',p.overdue],['Bloqueados',p.blocked],['Postergados pendientes',p.postponed],['Estancados',p.stale],['Por aprobar',p.approvals],['Cerrados',p.closed],['Cumplimiento',p.compliance==null?'—':p.compliance+'%']].map(([label,value])=>`<span><strong>${value}</strong>${label}</span>`).join('')}</div><p class="muted">${p.onTime}/${p.comparable} cierres en fecha original. ${p.closed-p.comparable} sin fechas comparables.</p><button class="button" data-action="team-kanban" data-id="${escapeHtml(p.id)}">Ver en Kanban</button></article>`).join('') : emptyTable('No hay usuarios activos.');
   }
 
 </script>

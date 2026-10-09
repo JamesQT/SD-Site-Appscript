@@ -1,0 +1,101 @@
+<script>
+/** Seguimiento, línea base y calendario sobre la instantánea local autorizada. */
+
+  /** Devuelve el día de la última instantánea del servidor en Lima. */
+  function trackingToday() {
+    return Object.values(state.details).find(d=>d.boardTiming?.asOfDate)?.boardTiming.asOfDate||new Intl.DateTimeFormat('en-CA',{timeZone:'America/Lima',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  }
+
+  /**
+   * Aplica un filtro de seguimiento sin llamadas al servidor.
+   * @param {Object} detail - Detalle visible con indicadores del historial.
+   * @param {string} filter - Filtro seleccionado en Kanban.
+   * @returns {boolean} Si la tarjeta cumple el filtro.
+   */
+  function matchesFollowup(detail,filter) {
+    const c=detail.commitment,t=detail.boardTiming||{},active=!['CERRADO','ANULADO'].includes(c.estado);
+    if(filter==='postponed')return !!t.postponed;
+    if(filter==='recent')return !!t.hasStateChange&&t.stateDays!=null&&t.stateDays<3;
+    if(filter==='stale')return active&&t.stateDays!=null&&t.stateDays>=7;
+    if(filter==='overdue')return active&&!!c.fecha_objetivo&&c.fecha_objetivo<trackingToday();
+    return true;
+  }
+
+  /**
+   * Explica la fecha original, su procedencia y la desviación neta actual.
+   * @param {Object} detail - Detalle autorizado del compromiso.
+   * @returns {string} Sección de línea base.
+   */
+  function renderBaseline(detail) {
+    const b=detail.baseline||{},c=detail.commitment;
+    const source=b.source==='CREACION'?'Registrada al crear el compromiso':b.source==='HISTORIAL'?'Recuperada de la primera fecha disponible en el historial':'Referencia actual: no se conoce la fecha original';
+    return `<section class="detail-section baseline-section"><h3>Línea base de entrega</h3><div class="detail-grid"><div class="detail-row"><span>Fecha original / referencia</span><strong>${dateLabel(b.originalDate)}</strong></div><div class="detail-row"><span>Fecha actual</span><strong>${dateLabel(c.fecha_objetivo)}</strong></div><div class="detail-row"><span>Desviación neta</span><strong>${b.delayDays==null?'—':b.delayDays+' días'}</strong></div><div class="detail-row"><span>Postergaciones registradas</span><strong>${b.postponementCount||0}</strong></div></div><p class="muted">${source}. La desviación compara la fecha actual con esta referencia; los motivos se consultan en el historial.</p></section>`;
+  }
+
+  /**
+   * Resume fecha original y postergaciones registradas en cada tarjeta.
+   * @param {Object} baseline - Línea base autorizada y su procedencia.
+   * @returns {string} Resumen compacto sin inventar fechas originales.
+   */
+  function renderCardBaseline(baseline) {
+    if(!baseline)return '';
+    const label=baseline.source==='REFERENCIA_ACTUAL'?'Referencia actual':'Original';
+    return `<p class="kanban-baseline">${label}: ${dateLabel(baseline.originalDate)} · ${baseline.delayDays||0} días de desviación${baseline.postponementCount?' · '+baseline.postponementCount+' postergaciones':''}</p>`;
+  }
+
+  /** Actualiza la obligatoriedad del motivo solo cuando la nueva fecha es posterior. */
+  function updatePostponementReason() {
+    const form=$('#update-form');if(!form)return;
+    const baseline=JSON.parse(form.dataset.baseline),later=!!baseline.fecha_objetivo&&form.elements.fecha_objetivo.value>baseline.fecha_objetivo;
+    const reason=form.elements.motivo_postergacion;
+    reason.required=later;reason.disabled=!later;reason.closest('label').classList.toggle('hidden',!later);
+  }
+
+  /** Construye el calendario mensual y la agenda móvil sin recargar Sheets. */
+  function renderCalendar() {
+    if(!state.data){$('#calendar-grid').replaceChildren();return;}
+    const month=$('#calendar-month');if(!month.value)month.value=trackingToday().slice(0,7);
+    if(!/^\d{4}-\d{2}$/.test(month.value))return;
+    const owner=$('#calendar-owner'),selected=owner.value;
+    const people=new Map(state.data.people.map(p=>[p.usuario_id,p.nombre]));
+    state.data.commitments.forEach(c=>{if(!people.has(c.owner_id))people.set(c.owner_id,c.owner_name||c.owner_id);});
+    owner.innerHTML='<option value="">Todos</option>'+Array.from(people).sort((a,b)=>a[1].localeCompare(b[1],'es')).map(([id,name])=>`<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join('');
+    owner.value=people.has(selected)?selected:'';
+    const rows=state.data.commitments.filter(c=>(!owner.value||c.owner_id===owner.value)&&($('#calendar-state').value==='all'||!['CERRADO','ANULADO'].includes(c.estado)));
+    const [year,m]=month.value.split('-').map(Number),first=new Date(Date.UTC(year,m-1,1)),days=new Date(Date.UTC(year,m,0)).getUTCDate(),offset=(first.getUTCDay()+6)%7;
+    $('#calendar-title').textContent=new Intl.DateTimeFormat('es-PE',{month:'long',year:'numeric',timeZone:'UTC'}).format(first);
+    const inMonth=rows.filter(c=>c.fecha_objetivo?.startsWith(month.value));
+    $('#calendar-count').textContent=`${inMonth.length} entregas en este mes`;
+    const weekdays=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+    $('#calendar-grid').innerHTML=weekdays.map(day=>`<div class="calendar-weekday" aria-hidden="true">${day}</div>`).join('')+Array.from({length:offset},()=>'<div class="calendar-padding" aria-hidden="true"></div>').join('')+Array.from({length:days},(_,i)=>{
+      const date=month.value+'-'+String(i+1).padStart(2,'0'),entries=inMonth.filter(c=>c.fecha_objetivo===date);
+      return `<section class="calendar-day ${date===trackingToday()?'calendar-current':''} ${entries.length?'':'calendar-empty'}" aria-label="${escapeHtml(dateLabel(date))}"><h3><time datetime="${date}">${dateLabel(date)}</time></h3>${entries.map(c=>`<button class="calendar-event" data-action="board-detail" data-id="${escapeHtml(c.compromiso_id)}"><strong>${escapeHtml(c.titulo)}</strong><span>${escapeHtml(c.owner_name)} · ${statusName(c.estado)}</span>${state.details[c.compromiso_id].boardTiming?.postponed?'<span>⚑ Postergado</span>':''}</button>`).join('')}</section>`;
+    }).join('');
+    const undated=rows.filter(c=>!c.fecha_objetivo);
+    $('#calendar-undated').innerHTML=undated.length?`<h3>Sin fecha objetivo (${undated.length})</h3>${undated.map(c=>`<button class="button" data-action="board-detail" data-id="${escapeHtml(c.compromiso_id)}">${escapeHtml(c.titulo)}</button>`).join('')}`:'';
+  }
+
+  /** Calcula gestión por responsable a partir de detalles autorizados, incluidos antiguos responsables. */
+  function teamTrackingMetrics() {
+    const people=new Map(state.data.people.map(p=>[p.usuario_id,{id:p.usuario_id,name:p.nombre,role:p.rol_sistema}]));
+    state.data.commitments.forEach(c=>{if(!people.has(c.owner_id))people.set(c.owner_id,{id:c.owner_id,name:c.owner_name||c.owner_id,role:'Responsable anterior'});});
+    return Array.from(people.values()).map(person=>{
+      const details=Object.values(state.details).filter(d=>d.commitment.owner_id===person.id),active=details.filter(d=>!['CERRADO','ANULADO'].includes(d.commitment.estado));
+      const closed=details.filter(d=>d.commitment.estado==='CERRADO'),comparable=closed.filter(d=>d.commitment.fecha_cierre&&d.baseline?.originalDate&&d.baseline.source!=='REFERENCIA_ACTUAL');
+      const onTime=comparable.filter(d=>d.commitment.fecha_cierre.slice(0,10)<=d.baseline.originalDate).length;
+      return {...person,open:active.length,overdue:active.filter(d=>matchesFollowup(d,'overdue')).length,blocked:active.filter(d=>d.commitment.estado==='BLOQUEADO').length,postponed:active.filter(d=>d.boardTiming?.postponed).length,stale:active.filter(d=>matchesFollowup(d,'stale')).length,closed:closed.length,onTime:onTime,comparable:comparable.length,compliance:comparable.length?Math.round(onTime/comparable.length*100):null,approvals:Object.values(state.details).reduce((n,d)=>n+d.approvals.filter(a=>a.estado==='PENDIENTE'&&a.aprobador_asignado_id===person.id).length,0)};
+    }).sort((a,b)=>b.overdue-a.overdue||b.open-a.open||a.name.localeCompare(b.name,'es'));
+  }
+
+  /** Registra controles de calendario y motivo de postergación una sola vez. */
+  function startTracking() {
+    ['calendar-month','calendar-owner','calendar-state'].forEach(id=>$('#'+id).addEventListener('change',renderCalendar));
+    $('#calendar-today').addEventListener('click',()=>{$('#calendar-month').value=trackingToday().slice(0,7);renderCalendar();});
+    document.addEventListener('click',event=>{
+      const button=event.target.closest('[data-calendar-shift]');if(!button)return;
+      const month=$('#calendar-month'),date=new Date(month.value+'-01T12:00:00Z');date.setUTCMonth(date.getUTCMonth()+Number(button.dataset.calendarShift));month.value=date.toISOString().slice(0,7);renderCalendar();
+      button.focus();
+    });
+    document.addEventListener('input',event=>{if(event.target.matches('#update-form [name="fecha_objetivo"]'))updatePostponementReason();});
+  }
+</script>

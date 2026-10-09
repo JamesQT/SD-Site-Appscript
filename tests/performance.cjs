@@ -45,9 +45,9 @@ advanceTime(300001);
 delta=ctx.syncAppData(syncArgs(snapshot));assert.equal(delta.metadata.projects.find(p=>p.proyecto_id===project.proyecto_id).nombre,'Untracked edit');
 
 // Los cambios estructurales descartan también índices que tenían una clave anterior.
-const keyBefore=ctx.performanceCacheKey_('activity-v2','HISTORIAL');
+const keyBefore=ctx.performanceCacheKey_('activity-v3','HISTORIAL');
 ctx.trackSheetChange_({source:book,triggerUid:tracking.changeTriggerId,changeType:'INSERT_ROW'});
-assert.notEqual(ctx.performanceCacheKey_('activity-v2','HISTORIAL'),keyBefore);
+assert.notEqual(ctx.performanceCacheKey_('activity-v3','HISTORIAL'),keyBefore);
 
 // Las aprobaciones y responsabilidades se leen incluso cuando el cliente declara no cambios.
 setEmail('owner@example.com');snapshot=ctx.getAppData();

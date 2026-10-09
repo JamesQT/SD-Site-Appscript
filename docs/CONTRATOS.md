@@ -36,6 +36,10 @@ Campos opcionales de creación: `descripcion, subtipo, proyecto_id, criticidad, 
 
 `changes` acepta únicamente `estado, porcentaje_avance, descripcion, fecha_objetivo`. Estado debe pertenecer a OPEN_STATUS; avance es un número finito entre 0 y 99. Cierre y envío a aprobación tienen operaciones propias. Los campos ausentes no se reemplazan. La interfaz omite la llamada si no detecta cambios.
 
+Si `fecha_objetivo` aumenta respecto a la fecha actual, `updateCommitment` exige `motivo_postergacion` fuera de `changes`: texto no vacío de hasta 2000 caracteres. La comprobación ocurre antes de escribir cualquier campo. Misma fecha, adelanto y primera asignación a un registro antiguo sin fecha no requieren motivo. El evento UPDATE de fecha conserva valor anterior, nuevo, autor, fecha y motivo en `detalle`.
+
+Los detalles incluyen `baseline: {originalDate, source, delayDays, postponementCount}`. `source` es CREACION, HISTORIAL (primera fecha disponible) o REFERENCIA_ACTUAL (origen desconocido). `delayDays` mide desviación neta positiva frente a esa referencia; `postponementCount` cuenta aumentos auditados, aunque después se adelante la entrega. `boardTiming` añade `asOfDate` y `hasStateChange` para distinguir tarjetas nuevas de cambios de estado reales.
+
 Las versiones proceden de la vista que el usuario abrió, no de una actualización silenciosa posterior. La interfaz siempre las envía. Para compatibilidad con integraciones anteriores, el servidor conserva la entrada antigua de actualización y permite omitir versiones; cualquier integración nueva debe usar el contrato de versión documentado.
 
 Una respuesta MutationResult contiene `{ok, id, user}` y `detail` si sigue siendo visible, o `remove: true` si se perdió acceso. Envío de evidencia añade `state` y, cuando aplica, `approvalId`; comentarios añaden `comment`. El navegador actualiza su estado solo después de una respuesta exitosa.

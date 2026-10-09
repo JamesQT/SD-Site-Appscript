@@ -2,6 +2,8 @@
 
 El menú Kanban muestra los compromisos autorizados agrupados por estado, con búsqueda local y filtro de mis tareas. Cada tarjeta abre el detalle y muestra responsable, fecha, criticidad, avance y pasos completados.
 
+El selector Seguimiento permite ver cambios de estado recientes, postergados, estancados y vencidos. La línea base y los motivos se explican en [SEGUIMIENTO.md](SEGUIMIENTO.md), junto al calendario y la gestión del equipo.
+
 Los botones «Responsable» permiten seleccionar una persona del equipo o «Todos». Filtran por `owner_id`, se combinan con búsqueda y «Solo mis tareas», y conservan la selección durante las actualizaciones. Cada botón muestra el número de compromisos visibles de esa persona antes de los otros filtros; incluye personas sin tarjetas (0) y responsables antiguos que todavía tienen tarjetas visibles. No amplían el acceso del perfil ni realizan consultas al servidor. La selección activa se distingue por color y `aria-pressed`; los botones admiten teclado y se distribuyen en varias líneas en móvil.
 
 Las tarjetas muestran días desde creación y días en el estado actual, contados como días calendario en America/Lima (hoy = 0). El segundo contador se basa en cambios reales de `estado` en HISTORIAL, incluidos envío a aprobación, devolución, cierre y anulación. Comentarios, checklist, descripción y cambios de fecha no lo reinician. Si nunca hubo cambio y sigue Pendiente, se usa la creación. Para estados avanzados sin evento registrado se muestra «Estado: sin historial»; si falta creación, «Sin fecha de creación».

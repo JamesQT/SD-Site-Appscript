@@ -13,6 +13,7 @@
         <nav id="main-nav" aria-label="Navegación principal">
           <button class="nav-item active" data-view="inicio"><span>⌂</span>Inicio</button>
           <button class="nav-item" data-view="kanban"><span>▦</span>Kanban</button>
+          <button class="nav-item" data-view="calendario"><span>▤</span>Calendario</button>
           <button class="nav-item" data-view="compromisos"><span>▤</span>Compromisos</button>
           <button class="nav-item" data-view="mis-tareas"><span>✓</span>Mis tareas</button>
           <button class="nav-item" data-view="aprobaciones"><span>◎</span>Aprobaciones <b id="approval-badge" class="nav-badge">0</b></button>
@@ -52,7 +53,13 @@
           <div class="page-head"><div><h1>Tablero Kanban</h1><p>Mueve los compromisos abiertos. El cierre mantiene las evidencias y aprobaciones.</p></div><button class="button primary" data-action="open-create">＋ Nuevo compromiso</button></div>
           <div class="toolbar"><input class="control search" id="board-search" aria-label="Buscar en Kanban" placeholder="Buscar título, responsable o proyecto…"><label class="check-field"><input type="checkbox" id="board-mine"> Solo mis tareas</label></div>
           <div class="kanban-owner-toolbar"><span class="muted">Responsable</span><div id="board-owners" class="kanban-owners" role="group" aria-label="Filtrar por responsable"></div></div>
+          <div class="toolbar"><label class="tracking-control">Seguimiento<select class="control" id="board-followup"><option value="">Todos los compromisos</option><option value="recent">Estado actualizado en los últimos 3 días</option><option value="stale">7 días o más en el mismo estado</option><option value="overdue">Vencidos pendientes de cierre</option></select></label><label class="check-field"><input type="checkbox" id="board-postponed"> Solo postergados</label><p id="board-results" class="muted" role="status"></p></div>
           <div id="kanban-board" class="kanban-board" aria-live="polite"></div>
+        </section>
+        <section class="view" id="view-calendario">
+          <div class="page-head"><div><h1>Calendario de compromisos</h1><p>Entregas por fecha objetivo actual. Selecciona una tarjeta para abrir el detalle.</p></div></div>
+          <div class="toolbar calendar-toolbar"><button class="button" data-calendar-shift="-1" aria-label="Mes anterior">←</button><label class="tracking-control">Mes<input class="control" type="month" id="calendar-month"></label><button class="button" data-calendar-shift="1" aria-label="Mes siguiente">→</button><button class="button" id="calendar-today">Hoy</button><label class="tracking-control">Responsable<select class="control" id="calendar-owner"></select></label><label class="tracking-control">Mostrar<select class="control" id="calendar-state"><option value="active">Pendientes de cierre</option><option value="all">Todos los estados</option></select></label></div>
+          <h2 id="calendar-title"></h2><p id="calendar-count" class="muted" role="status"></p><div id="calendar-grid" class="calendar-grid"></div><div id="calendar-undated" class="detail-section"></div>
         </section>
         <section class="view" id="view-compromisos">
           <div class="page-head"><div><h1>Compromisos</h1><p>Consulta responsable, fecha, estado y criticidad.</p></div><button class="button primary" data-action="open-create">＋ Nuevo compromiso</button></div>
@@ -77,7 +84,8 @@
         </section>
 
         <section class="view" id="view-equipo">
-          <div class="page-head"><div><h1>Equipo</h1><p>Carga abierta y aprobaciones pendientes por persona.</p></div></div>
+          <div class="page-head"><div><h1>Gestión del equipo</h1><p>Carga pendiente de cierre, vencimientos, bloqueos y postergaciones por responsable.</p></div></div>
+          <div id="team-summary" class="stat-grid"></div><p class="muted">Estancados: 7 días o más en el estado actual. Cumplimiento histórico: cierres en o antes de la fecha original entre cierres con fechas comparables; los registros sin línea base comprobable se excluyen.</p>
           <div id="team-grid" class="team-grid"></div>
         </section>
 
