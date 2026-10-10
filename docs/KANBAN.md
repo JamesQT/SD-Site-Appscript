@@ -16,6 +16,14 @@ Arrastrar o usar Mover a permite cambiar entre Pendiente, En curso y Bloqueado, 
 
 El detalle permite añadir, editar, marcar y eliminar hasta 40 pasos de 160 caracteres. Guardar checklist conserva los borradores de avance y comentario; cada edición verifica la versión completa del compromiso bajo bloqueo. Solo los responsables, colaboradores activos y administradores autorizados pueden editar, y únicamente en estados abiertos. Los demás accesos muestran los pasos en lectura.
 
+## Pantalla completa y tarjetas compactas
+
+El botón **Pantalla completa** oculta la navegación y expande el tablero al espacio disponible. Solicita además pantalla completa al navegador cuando está permitido; si el contenedor de Google bloquea esa API, conserva la expansión dentro de la web. Las seis columnas permanecen en una fila, con desplazamiento horizontal en pantallas pequeñas y desplazamiento vertical independiente para las tarjetas de cada columna.
+
+Al expandir se activa **Vista compacta**, que reduce espacios y tamaño de las tarjetas. Conserva título, responsable, vencimiento, criticidad, contadores, banderas, avance y selector de estado. Proyecto, línea base y resumen de checklist se consultan en el detalle. La casilla también funciona en el tablero normal y puede desmarcarse durante la expansión.
+
+Se sale con **Salir de pantalla completa** o Escape. Si hay un diálogo abierto, Escape cierra primero el diálogo. Cambiar de vista o de perfil también cierra la expansión; la densidad seleccionada se conserva durante la sesión. Los filtros y los formularios siguen funcionando y estos controles no consultan al servidor.
+
 ## Persistencia y compatibilidad
 
 `Checklist.gs` añade `checklist_json` al final de COMPROMISOS al primer guardado autorizado. No hace falta preparar tablas manualmente. Los registros antiguos se muestran sin pasos. La migración conserva columnas y fórmulas; una lista dañada produce un error de configuración para evitar su sobrescritura silenciosa.
@@ -26,4 +34,4 @@ La lista contiene objetos `{id, title, done}`. Su contenido participa en la vers
 
 ## Validación
 
-`node tools/test.cjs` comprueba autorización, versiones, migración, límites y frontera de aprobación. `node tests/browser.cjs` prueba selector y arrastre, filtros, persistencia de pasos, conservación de borradores, evidencias y adaptación móvil, además de los flujos existentes.
+`node tools/test.cjs` comprueba autorización, versiones, migración, límites y frontera de aprobación. `node tests/browser.cjs` prueba selector y arrastre, filtros, persistencia de pasos, conservación de borradores, evidencias y adaptación móvil, además de los flujos existentes. Verifica también reducción de tarjetas, expansión nativa y alternativa, seis columnas alineadas, detalle dentro de pantalla completa, salida con Escape y ausencia de consultas adicionales.

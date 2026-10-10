@@ -1,6 +1,6 @@
 {
   "name": "sd-control-apps-script",
-  "version": "3.6.0",
+  "version": "3.7.0",
   "private": true,
   "description": "Fuentes modulares de SD Control y pruebas locales sin acceso a Google",
   "scripts": {

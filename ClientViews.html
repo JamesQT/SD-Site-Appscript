@@ -44,6 +44,7 @@
    * @param {boolean} hiddenOnly - Conserva el DOM y los borradores de la vista abierta.
    */
   function clearProfileViews(hiddenOnly=false) {
+    if(!hiddenOnly)setBoardExpanded(false);
     ['dashboard-table','dashboard-inbox','kanban-board','board-owners','calendar-grid','calendar-undated','meeting-report','commitments-table','tasks-table','approval-list','approval-detail','admin-table','recurrences-table','team-grid','team-summary'].forEach(id=>{const element=$('#'+id);if(element&&(!hiddenOnly||!element.closest('.view')?.classList.contains('active')))element.replaceChildren();});
     state.renderedViews={};
   }
@@ -166,6 +167,7 @@
   function setView(name) {
     if (!state.data||state.profileSwitching) return;
     if (['recurrentes','equipo','admin'].includes(name) && !state.data.isAdmin) return showToast('Vista disponible para el perfil ADMIN.');
+    if(name!=='kanban')setBoardExpanded(false);
     $$('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+name));
     $$('.nav-item[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));
     $('#breadcrumb-current').textContent=({inicio:'Inicio',kanban:'Kanban',calendario:'Calendario',informe:'Informe',compromisos:'Compromisos','mis-tareas':'Mis tareas',aprobaciones:'Aprobaciones',recurrentes:'Línea base',equipo:'Equipo',admin:'Administración'})[name]||name;

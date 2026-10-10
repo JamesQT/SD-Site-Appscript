@@ -1,5 +1,33 @@
 <script>
 /** Kanban y edición de pasos; reutiliza la instantánea local y los flujos de cierre existentes. */
+  /** Aplica la densidad elegida sin reconstruir tarjetas ni consultar al servidor. */
+  function updateBoardDensity() {
+    $('#view-kanban').classList.toggle('board-compact',$('#board-compact').checked);
+  }
+
+  /**
+   * Expande el tablero dentro de la web y mantiene un control de salida accesible.
+   * @param {boolean} expanded - Activa o desactiva la vista ampliada.
+   */
+  function setBoardExpanded(expanded) {
+    document.body.classList.toggle('board-expanded',expanded);
+    const button=$('#board-fullscreen');button.textContent=expanded?'Salir de pantalla completa':'Pantalla completa';button.setAttribute('aria-pressed',String(expanded));
+    if(expanded){$('#board-compact').checked=true;updateBoardDensity();}
+    else if(state.boardNativeFullscreen&&document.fullscreenElement)document.exitFullscreen().catch(()=>{});
+    if(!expanded)state.boardNativeFullscreen=false;
+  }
+
+  /** Amplía la web y solicita pantalla completa nativa si el navegador y su contenedor lo permiten. */
+  async function toggleBoardFullscreen() {
+    const expanded=!document.body.classList.contains('board-expanded');setBoardExpanded(expanded);
+    if(!expanded||!document.fullscreenEnabled||!document.documentElement.requestFullscreen)return;
+    try {
+      await document.documentElement.requestFullscreen();
+      if(document.body.classList.contains('board-expanded'))state.boardNativeFullscreen=true;
+      else if(document.fullscreenElement)await document.exitFullscreen();
+    } catch(error){/* En el iframe de Apps Script se conserva la ampliación dentro de la web. */}
+  }
+
   /** Representa las columnas y las tarjetas autorizadas; permite mover mediante selector o arrastre. */
   function renderBoard() {
     if(!state.data){$('#kanban-board').replaceChildren();$('#board-owners').replaceChildren();state.boardOwner='';return;}
@@ -95,6 +123,10 @@
 
   /** Registra interacción del tablero y checklists sin llamadas de lectura adicionales. */
   function startBoard() {
+    $('#board-fullscreen').addEventListener('click',toggleBoardFullscreen);
+    $('#board-compact').addEventListener('change',updateBoardDensity);
+    document.addEventListener('fullscreenchange',()=>{if(state.boardNativeFullscreen&&!document.fullscreenElement){state.boardNativeFullscreen=false;setBoardExpanded(false);$('#board-fullscreen').focus();}});
+    document.addEventListener('keydown',event=>{if(event.key==='Escape'&&document.body.classList.contains('board-expanded')&&!$('dialog[open]')){event.preventDefault();setBoardExpanded(false);$('#board-fullscreen').focus();}});
     $('#board-followup').addEventListener('change',renderBoard);
     $('#board-postponed').addEventListener('change',renderBoard);
     $('#board-owners').addEventListener('click',event=>{
