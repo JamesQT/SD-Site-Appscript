@@ -1,10 +1,16 @@
 # Archivos, dependencias e informes
 
-## Adjuntar archivos desde la web
+## Archivos de apoyo y evidencias de cierre
 
-Abre un compromiso editable y usa **Adjuntar archivo**: selecciona el archivo, escribe su descripción y pulsa **Subir a Drive**. Admite hasta 5 MiB, en PDF, PNG, JPG/JPEG, WebP, TXT, CSV, DOCX, XLSX y PPTX. Se valida extensión y tamaño; no se inspecciona ni convierte el contenido del documento.
+En el detalle de un compromiso editable, **Archivos de apoyo** permite subir material complementario con una descripción. Guardarlo en Drive conserva el estado del compromiso y no constituye por sí solo una evidencia enviada.
 
-Adjuntar registra una evidencia y un evento UPLOAD, conservando estado y borradores de otros formularios. Para cerrar o enviar a aprobación, usa el flujo de evidencia habitual y selecciona el archivo en **Evidencia** en lugar de introducir un enlace. Se registra su vinculación a esa solicitud sin duplicar el archivo de Drive. También puedes seguir usando enlaces HTTPS.
+Para acreditar la entrega, pulsa **Cerrar con evidencia** o **Enviar evidencia a aprobación**. En ese formulario puedes **subir una imagen o archivo desde tu equipo**, seleccionar un archivo que ya está en Drive por una carga anterior o usar un enlace HTTPS. Añade el comentario de cierre y envía. La carga directa guarda el archivo en Drive y después ejecuta las reglas de cierre o aprobación; no necesitas salir del formulario ni copiar un enlace.
+
+Ambas cargas admiten hasta 5 MiB: PDF, PNG, JPG/JPEG, WebP, TXT, CSV, DOCX, XLSX y PPTX. Se valida extensión y tamaño; no se inspecciona ni convierte el contenido del documento. Se registra un evento UPLOAD al guardar el archivo. Solo el envío de cierre registra la evidencia formal y cambia el estado, con las validaciones de permisos, versión y dependencias existentes.
+
+**Evidencias de cierre** muestra únicamente los registros enviados. Si reutilizas un archivo de apoyo, aparece en esa sección sin duplicar el archivo físico ni repetirlo en la lista de apoyo. Se conservan las evidencias históricas: las cargas antiguas con ID UPL se reconocen como adjuntos; los registros de envío EVI siguen siendo evidencias de cierre. Las nuevas cargas usan tipo ADJUNTO en EVIDENCIAS y el envío registra ARCHIVO o ENLACE; no se añaden columnas ni se eliminan filas.
+
+Drive y Sheets no forman una transacción conjunta. Si la subida termina pero falla el cierre, el formulario informa que el archivo ya quedó en Drive, lo selecciona y conserva el comentario. Puedes reintentar el envío sin subir otra copia. Si cierras el formulario antes de reintentarlo, el archivo queda disponible entre los archivos existentes del compromiso.
 
 Los archivos se crean en una carpeta de Drive por Sheet y usuario que adjunta, denominada `SD Control - Evidencias - …`. La carpeta no se comparte públicamente. Cada archivo concede lectura a los participantes activos actuales, administradores y delegados vigentes que pueden aprobar. Google puede exigir un nuevo consentimiento para Drive; sus políticas organizativas pueden impedir compartir archivos. La cuenta de ejecución del despliegue debe poder crear archivos y conceder permisos. Ver [DriveApp](https://developers.google.com/apps-script/reference/drive/drive-app).
 

@@ -14,7 +14,7 @@ function submitEvidence(input) {
     assertExpectedVersion_(c,p.expected_version);
     assertDependenciesClosed_(c);
     const attachment=p.evidencia_id?findById_(APP.SHEETS.evidence,'evidencia_id',p.evidencia_id):null;
-    if(p.evidencia_id&&(!attachment||attachment.compromiso_id!==c.compromiso_id||attachment.tipo_evidencia!=='ARCHIVO'))throw appError_('VALIDATION','Selecciona un archivo adjunto de este compromiso.');
+    if(p.evidencia_id&&(!attachment||attachment.compromiso_id!==c.compromiso_id||!['ARCHIVO','ADJUNTO'].includes(attachment.tipo_evidencia)))throw appError_('VALIDATION','Selecciona un archivo adjunto de este compromiso.');
     const url=validateUrl_(attachment?attachment.url_drive:p.url),comment=text_(p.comentario,'Agrega un comentario que explique la evidencia.',APP.MAX_TEXT),name=text_(attachment?attachment.nombre_archivo:p.nombre||'Evidencia',null,180);
     const needsApproval=isTrue_(c.requiere_aprobacion);
     if(needsApproval){requireActiveUserId_(c.aprobador_actual_id);if(c.aprobador_actual_id===c.owner_id)throw appError_('VALIDATION','Configura un aprobador distinto del responsable.');}
