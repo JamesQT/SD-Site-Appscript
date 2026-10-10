@@ -22,7 +22,7 @@ Las tarjetas destacan al responsable con una etiqueta de color e iniciales. El c
 
 El botón **Pantalla completa** oculta la navegación y expande el tablero al espacio disponible. Solicita además pantalla completa al navegador cuando está permitido; si el contenedor de Google bloquea esa API, conserva la expansión dentro de la web. Las seis columnas permanecen en una fila, con desplazamiento horizontal en pantallas pequeñas y desplazamiento vertical independiente para las tarjetas de cada columna.
 
-Al expandir se activa **Vista compacta**, que reduce espacios y tamaño de las tarjetas. Conserva título, responsable, vencimiento, criticidad, contadores, banderas, avance . Proyecto, línea base y resumen de checklist se consultan en el detalle. La casilla también funciona en el tablero normal y puede desmarcarse durante la expansión.
+Al expandir se activa **Vista compacta**, que reduce espacios y tamaño de las tarjetas. Conserva título, responsable, vencimiento, criticidad, contadores, banderas y avance. Proyecto, línea base y resumen de checklist se consultan en el detalle. La casilla también funciona en el tablero normal y puede desmarcarse durante la expansión.
 
 Se sale con **Salir de pantalla completa** o Escape. Si hay un diálogo abierto, Escape cierra primero el diálogo. Cambiar de vista o de perfil también cierra la expansión; la densidad seleccionada se conserva durante la sesión. Los filtros y los formularios siguen funcionando y estos controles no consultan al servidor.
 
