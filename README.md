@@ -2,6 +2,8 @@
 
 Servidor e interfaz separados por responsabilidades, con JSDoc en funciones, contratos de datos, errores por código, sincronización con revisiones y cachés reconstruibles. Se conserva Google Apps Script + Sheets.
 
+La versión 3.7 añade **Pantalla completa** y **Vista compacta** al Kanban. Permite aprovechar la pantalla, mantener las seis columnas en una fila y recorrer las tarjetas dentro de cada columna, conservando filtros y detalles sin nuevas consultas al servidor. Consulta [la guía del Kanban](docs/KANBAN.md).
+
 La versión 3.6 renueva la presentación con azul noche, azul eléctrico y acentos cian/lima. Incorpora navegación lateral en escritorio, navegación horizontal en móvil, iconos SVG locales, indicadores destacados, estados de Kanban diferenciados y resumen inicial adaptado a tarjetas en móvil. Usa fuentes del sistema y CSS/SVG sin dependencias externas. Conserva las optimizaciones de rendimiento de 3.5.
 
 Guías: [arquitectura y módulos](docs/ARQUITECTURA.md), [contratos de operaciones](docs/CONTRATOS.md) e [instalación, entorno de pruebas y recuperación](docs/DESPLIEGUE.md).

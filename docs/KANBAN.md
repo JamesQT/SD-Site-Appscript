@@ -12,9 +12,19 @@ La bandera «⚑ Postergado» indica que HISTORIAL contiene al menos un cambio d
 
 Estos datos se reconstruyen desde el historial existente y comparten su índice de caché. No se añaden columnas ni llamadas al abrir tarjetas. Las mutaciones actualizan el índice y la sincronización renueva los días al cambiar de fecha, sin alterar la versión de edición del compromiso.
 
-Arrastrar o usar Mover a permite cambiar entre Pendiente, En curso y Bloqueado, si el usuario puede editar. Para pasar a En aprobación o Cerrado se abre el formulario de evidencias existente, según requiere_aprobacion. Las tarjetas ya enviadas no pueden moverse para saltarse una decisión. Anular requiere el motivo desde el detalle.
+Arrastrar permite cambiar entre Pendiente, En curso y Bloqueado, si el usuario puede editar. Para pasar a En aprobación o Cerrado se abre el formulario de evidencias existente, según requiere_aprobacion. Las tarjetas ya enviadas no pueden moverse para saltarse una decisión. Anular requiere el motivo desde el detalle.
 
 El detalle permite añadir, editar, marcar y eliminar hasta 40 pasos de 160 caracteres. Guardar checklist conserva los borradores de avance y comentario; cada edición verifica la versión completa del compromiso bajo bloqueo. Solo los responsables, colaboradores activos y administradores autorizados pueden editar, y únicamente en estados abiertos. Los demás accesos muestran los pasos en lectura.
+
+Las tarjetas destacan al responsable con una etiqueta de color e iniciales. El color se deriva de su ID y se conserva en todas sus tarjetas; no requiere modificar USUARIOS. No es un icono personalizable. Los días desde creación y en estado aparecen en dos celdas contiguas. Se retira el selector «Mover a» de la tarjeta; el detalle conserva su formulario de estado para teclado y dispositivos sin arrastre.
+
+## Pantalla completa y tarjetas compactas
+
+El botón **Pantalla completa** oculta la navegación y expande el tablero al espacio disponible. Solicita además pantalla completa al navegador cuando está permitido; si el contenedor de Google bloquea esa API, conserva la expansión dentro de la web. Las seis columnas permanecen en una fila, con desplazamiento horizontal en pantallas pequeñas y desplazamiento vertical independiente para las tarjetas de cada columna.
+
+Al expandir se activa **Vista compacta**, que reduce espacios y tamaño de las tarjetas. Conserva título, responsable, vencimiento, criticidad, contadores, banderas y avance. Proyecto, línea base y resumen de checklist se consultan en el detalle. La casilla también funciona en el tablero normal y puede desmarcarse durante la expansión.
+
+Se sale con **Salir de pantalla completa** o Escape. Si hay un diálogo abierto, Escape cierra primero el diálogo. Cambiar de vista o de perfil también cierra la expansión; la densidad seleccionada se conserva durante la sesión. Los filtros y los formularios siguen funcionando y estos controles no consultan al servidor.
 
 ## Persistencia y compatibilidad
 
@@ -26,4 +36,4 @@ La lista contiene objetos `{id, title, done}`. Su contenido participa en la vers
 
 ## Validación
 
-`node tools/test.cjs` comprueba autorización, versiones, migración, límites y frontera de aprobación. `node tests/browser.cjs` prueba selector y arrastre, filtros, persistencia de pasos, conservación de borradores, evidencias y adaptación móvil, además de los flujos existentes.
+`node tools/test.cjs` comprueba autorización, versiones, migración, límites y frontera de aprobación. `node tests/browser.cjs` prueba arrastre, filtros, persistencia de pasos, conservación de borradores, evidencias y adaptación móvil, además de los flujos existentes. Verifica también reducción de tarjetas, expansión nativa y alternativa, seis columnas alineadas, detalle dentro de pantalla completa, salida con Escape y ausencia de consultas adicionales.

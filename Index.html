@@ -51,10 +51,12 @@
         </section>
 
         <section class="view" id="view-kanban">
-          <div class="page-head"><div><h1>Tablero Kanban</h1><p>Mueve los compromisos abiertos. El cierre mantiene las evidencias y aprobaciones.</p></div><button class="button primary" data-action="open-create">＋ Nuevo compromiso</button></div>
+          <div class="page-head board-page-head"><div><h1>Tablero Kanban</h1><p>Mueve los compromisos abiertos. El cierre mantiene las evidencias y aprobaciones.</p></div><div class="board-view-actions"><label class="check-field"><input type="checkbox" id="board-compact"> Vista compacta</label><button type="button" class="button" id="board-fullscreen" aria-pressed="false" aria-controls="view-kanban">Pantalla completa</button><button class="button primary" data-action="open-create">＋ Nuevo compromiso</button></div></div>
+          <div class="board-controls">
           <div class="toolbar"><input class="control search" id="board-search" aria-label="Buscar en Kanban" placeholder="Buscar título, responsable o proyecto…"><label class="check-field"><input type="checkbox" id="board-mine"> Solo mis tareas</label></div>
           <div class="kanban-owner-toolbar"><span class="muted">Responsable</span><div id="board-owners" class="kanban-owners" role="group" aria-label="Filtrar por responsable"></div></div>
           <div class="toolbar"><label class="tracking-control">Seguimiento<select class="control" id="board-followup"><option value="">Todos los compromisos</option><option value="recent">Estado actualizado en los últimos 3 días</option><option value="stale">7 días o más en el mismo estado</option><option value="overdue">Vencidos pendientes de cierre</option></select></label><label class="check-field"><input type="checkbox" id="board-postponed"> Solo postergados</label><p id="board-results" class="muted" role="status"></p></div>
+          </div>
           <div id="kanban-board" class="kanban-board" aria-live="polite"></div>
         </section>
         <section class="view" id="view-calendario">
