@@ -21,7 +21,7 @@ assert.throws(()=>ctx.uploadCommitmentFile({...uploaded,base64:'%%%%'}),e=>e.cod
 assert.throws(()=>ctx.uploadCommitmentFile({...uploaded,base64:'A'.repeat(7*1024*1024)}),e=>e.code==='VALIDATION');
 setEmail('approver@example.com');assert.throws(()=>ctx.uploadCommitmentFile(uploaded),e=>e.code==='FORBIDDEN');assert.equal(files.size,0);setEmail('admin@example.com');
 const result=ctx.uploadCommitmentFile(uploaded);assert.equal(files.size,1);assert.equal(result.detail.commitment.estado,'PENDIENTE');
-assert.equal(result.detail.evidence.find(e=>e.evidencia_id===result.evidencia_id).tipo_evidencia,'ARCHIVO');
+assert.equal(result.detail.evidence.find(e=>e.evidencia_id===result.evidencia_id).tipo_evidencia,'ADJUNTO');
 assert.ok(files.get(result.archivo_id).viewers.has('owner@example.com'));assert.ok(files.get(result.archivo_id).viewers.has('admin@example.com'));
 ctx.uploadCommitmentFile(uploaded);assert.equal(files.size,1);assert.equal(rows('EVIDENCIAS').filter(e=>e.evidencia_id===result.evidencia_id).length,1);
 assert.throws(()=>ctx.uploadCommitmentFile({...uploaded,comentario:'Otro contenido de solicitud'}),e=>e.code==='CONFLICT');

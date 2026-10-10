@@ -78,7 +78,7 @@ function uploadCommitmentFile(input) {
       if(headers.length+1>sheet.getMaxColumns())sheet.insertColumnsAfter(sheet.getMaxColumns(),1);
       sheet.getRange(1,headers.length+1).setValue('archivo_hash');invalidateTable_(APP.SHEETS.evidence,true);
     }
-    appendRecord_(APP.SHEETS.evidence,{evidencia_id:id,compromiso_id:c.compromiso_id,aprobacion_id:'',usuario_id:actor.usuario_id,fecha_subida:new Date(),tipo_evidencia:'ARCHIVO',nombre_archivo:name,drive_file_id:file.getId(),url_drive:file.getUrl(),comentario:comment,archivo_hash:digest});
+    appendRecord_(APP.SHEETS.evidence,{evidencia_id:id,compromiso_id:c.compromiso_id,aprobacion_id:'',usuario_id:actor.usuario_id,fecha_subida:new Date(),tipo_evidencia:'ADJUNTO',nombre_archivo:name,drive_file_id:file.getId(),url_drive:file.getUrl(),comentario:comment,archivo_hash:digest});
     logEvent_(c.compromiso_id,actor.usuario_id,'UPLOAD','','','',name);
     return mutationResult_(c.compromiso_id,actor,{archivo_id:file.getId(),evidencia_id:id});
   });

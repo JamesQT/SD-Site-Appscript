@@ -33,12 +33,13 @@
     if (action==='retry-detail') return openDetail(button.dataset.id);
     if (action==='activity-more') return loadActivity(state.detailId, state.detailLoad, !state.activity.length);
     if (action==='open-create') return openCreate();
-    if (action==='close-dialog') return closeDialog(button);
+    if (action==='close-dialog') {if(button.closest('#evidence-dialog')&&$('#evidence-form').dataset.busy==='true')return showToast('Espera a que termine el envío de evidencia.');return closeDialog(button);}
     if (action==='go') return setView(button.dataset.target);
     if (action==='open-approval') return openApproval(button.dataset.id);
     if (action==='open-evidence') {
       closeDialog(button);
       const form=$('#evidence-form'); form.reset(); form.elements.compromiso_id.value=button.dataset.id;form.dataset.version=$('#detail-content').dataset.version;
+      form.dataset.requestId=crypto.randomUUID();$('#evidence-status').textContent='';$('#evidence-error').textContent='';
       const c = state.data.commitments.find(x => x.compromiso_id === button.dataset.id);
       const needsApproval = c && (c.requiere_aprobacion === true || String(c.requiere_aprobacion).toUpperCase() === 'TRUE' || c.requiere_aprobacion === 1);
       $('#evidence-dialog .dialog-head p').textContent = needsApproval ? 'El compromiso pasará a aprobación.' : 'El compromiso se cerrará con la evidencia registrada.';
@@ -113,8 +114,7 @@
     }
     if (event.target.id==='evidence-form') {
       event.preventDefault();
-      try { const result = await callServer('submitEvidence',Object.assign(formObject(form),{expected_version:form.dataset.version})); $('#evidence-dialog').close();applyMutation(result); showToast(result.state === 'CERRADO' ? 'Compromiso cerrado con evidencia.' : 'Evidencia enviada a aprobación.'); }
-      catch(error) { mutationError(error,form); }
+      await submitEvidenceForm(form);
     }
     if (event.target.id==='update-form') {
       event.preventDefault();

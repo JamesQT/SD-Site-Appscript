@@ -2,6 +2,8 @@
 
 Servidor e interfaz separados por responsabilidades, con JSDoc en funciones, contratos de datos, errores por código, sincronización con revisiones y cachés reconstruibles. Se conserva Google Apps Script + Sheets.
 
+La versión 3.8 separa **Archivos de apoyo** de **Evidencias de cierre**. El formulario de cierre permite subir una imagen o archivo directamente a Drive, elegir un archivo existente o introducir un enlace. Subir material de apoyo no envía el compromiso a aprobación. Consulta [la guía de archivos y evidencias](docs/COLABORACION.md).
+
 La versión 3.7 añade **Pantalla completa** y **Vista compacta** al Kanban. Permite aprovechar la pantalla, mantener las seis columnas en una fila y recorrer las tarjetas dentro de cada columna, conservando filtros y detalles sin nuevas consultas al servidor. Consulta [la guía del Kanban](docs/KANBAN.md).
 
 La versión 3.6 renueva la presentación con azul noche, azul eléctrico y acentos cian/lima. Incorpora navegación lateral en escritorio, navegación horizontal en móvil, iconos SVG locales, indicadores destacados, estados de Kanban diferenciados y resumen inicial adaptado a tarjetas en móvil. Usa fuentes del sistema y CSS/SVG sin dependencias externas. Conserva las optimizaciones de rendimiento de 3.5.
@@ -85,7 +87,7 @@ Referencias: [MailApp](https://developers.google.com/apps-script/reference/mail/
 
 Se añaden metadatos de auditoría faltantes a USUARIOS, TIPOS_COMPROMISO, PROYECTOS y DELEGACIONES. RECURRENCIAS añade, si faltan, referencias, nivel, fechas, dias_plazo, ultimo_error y metadatos de auditoría. Se crea NOTIFICACIONES para la cola de correo. HISTORIAL conserva su estructura y almacena comentarios y eventos administrativos.
 
-El ID del Sheet y America/Lima se conservan. Los IDs anteriores siguen siendo válidos; las altas y compromisos nuevos usan UUIDs, y las instancias recurrentes usan plantilla y fecha. No edites los IDs manualmente. EVIDENCIAS sigue guardando enlaces HTTPS: no sube archivos ni verifica sus permisos. Sustituye los datos ficticios antes de operar.
+El ID del Sheet y America/Lima se conservan. Los IDs anteriores siguen siendo válidos; las altas y compromisos nuevos usan UUIDs, y las instancias recurrentes usan plantilla y fecha. No edites los IDs manualmente. EVIDENCIAS registra enlaces HTTPS, archivos de apoyo y evidencias enviadas; las cargas web se guardan en Drive según la guía de colaboración. Sustituye los datos ficticios antes de operar.
 
 ## Pruebas
 

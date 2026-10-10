@@ -131,10 +131,12 @@
       <form id="evidence-form" method="dialog">
         <div class="dialog-head"><div><h2>Enviar evidencia</h2><p>El compromiso pasará a aprobación.</p></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div>
         <input type="hidden" name="compromiso_id">
-        <label class="form-field">Evidencia<select name="evidencia_id" id="evidence-existing"><option value="">Usar un enlace</option></select></label>
+        <label class="form-field">¿Cómo quieres aportar la evidencia?<select name="evidencia_id" id="evidence-existing"><option value="__upload">Subir imagen o archivo desde mi equipo</option><option value="">Usar un enlace</option></select></label>
+        <label class="form-field" id="evidence-file-wrap">Archivo de evidencia<input name="archivo" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.docx,.xlsx,.pptx"><small>Hasta 5 MiB. Se guardará en Drive al enviar este formulario.</small></label>
         <label class="form-field" id="evidence-name-wrap">Nombre de la evidencia<input name="nombre" required maxlength="180" placeholder="Ej.: Reporte validado"></label>
         <label class="form-field" id="evidence-url-wrap">Enlace de Drive<input name="url" type="url" required placeholder="https://drive.google.com/…"></label>
         <label class="form-field">Comentario de cierre<textarea name="comentario" rows="3" required maxlength="2000"></textarea></label>
+        <p id="evidence-status" role="status" class="muted"></p><p id="evidence-error" class="form-error" role="alert"></p>
         <div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">Cancelar</button><button type="submit" class="button primary">Enviar a aprobación</button></div>
       </form>
     </dialog>

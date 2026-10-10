@@ -29,8 +29,22 @@
    * @returns {string} Formulario de carga o cadena vacía.
    */
   function renderFileUpload(detail) {
-    if(!detail.permissions.edit)return '';
-    return `<section class="detail-section"><h3>Adjuntar archivo</h3><form id="file-upload-form" data-id="${escapeHtml(detail.commitment.compromiso_id)}" data-version="${escapeHtml(detail.commitment._version)}" data-request-id="${crypto.randomUUID()}"><label class="form-field">Archivo<input name="archivo" type="file" required accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.docx,.xlsx,.pptx"></label><p class="muted">Máximo 5 MiB. PDF, PNG/JPG/WebP, TXT/CSV y DOCX/XLSX/PPTX. Se guarda en Drive y queda disponible como evidencia; adjuntar no cierra el compromiso.</p><label class="form-field">Descripción<textarea name="comentario" rows="2" required maxlength="2000"></textarea></label><p class="upload-status" role="status"></p><button type="submit" class="button primary">Subir a Drive</button></form></section>`;
+    const files=`<h3>Archivos de apoyo</h3><p class="muted">Material complementario del compromiso. Subirlo no envía evidencia ni cambia el estado. Para acreditar la entrega, usa el botón de cierre o envío a aprobación.</p><div id="detail-support-files">${renderCommitmentFiles(detail,true)}</div>`;
+    if(!detail.permissions.edit)return `<section class="detail-section">${files}</section>`;
+    return `<section class="detail-section">${files}<form id="file-upload-form" data-id="${escapeHtml(detail.commitment.compromiso_id)}" data-version="${escapeHtml(detail.commitment._version)}" data-request-id="${crypto.randomUUID()}"><label class="form-field">Archivo de apoyo<input name="archivo" type="file" required accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.docx,.xlsx,.pptx"></label><p class="muted">Máximo 5 MiB. PDF, PNG/JPG/WebP, TXT/CSV y DOCX/XLSX/PPTX.</p><label class="form-field">Descripción<textarea name="comentario" rows="2" required maxlength="2000"></textarea></label><p class="upload-status" role="status"></p><button type="submit" class="button primary">Guardar archivo de apoyo en Drive</button></form></section>`;
+  }
+
+  /**
+   * Separa los archivos cargados de las evidencias efectivamente enviadas, incluidos registros antiguos.
+   * @param {Object} detail - Detalle con registros autorizados de archivos y evidencias.
+   * @param {boolean} support - Selecciona archivos cargados en lugar de evidencias enviadas.
+   * @returns {string} Lista escapada o mensaje de sección vacía.
+   */
+  function renderCommitmentFiles(detail,support) {
+    const isUpload=e=>e.tipo_evidencia==='ADJUNTO'||String(e.evidencia_id).startsWith('UPL-');
+    const submittedFiles=new Set(detail.evidence.filter(e=>!isUpload(e)&&e.drive_file_id).map(e=>e.drive_file_id));
+    const rows=detail.evidence.filter(e=>isUpload(e)===support&&(!support||!submittedFiles.has(e.drive_file_id)));
+    return rows.map(e=>`<div class="list-row"><a href="${escapeHtml(e.url_drive)}" target="_blank" rel="noopener">${escapeHtml(e.nombre_archivo||'Evidencia')} ↗</a><small>${dateLabel(e.fecha_subida)}</small></div>`).join('')||`<p class="muted">${support?'Sin archivos de apoyo.':'Todavía no se ha enviado evidencia de cierre.'}</p>`;
   }
 
   /**
@@ -71,27 +85,59 @@
         $('#detail-content').dataset.version=result.detail.commitment._version;
         if(form.id==='file-upload-form') {
           form.reset();form.dataset.dirty='false';form.dataset.requestId=crypto.randomUUID();
-          error.textContent='Archivo adjunto. Ya puedes seleccionarlo como evidencia de cierre.';
-          const section=$('#detail-evidence-section');
-          if(section)section.innerHTML='<h3>Evidencias</h3>'+result.detail.evidence.map(e=>`<div class="list-row"><a href="${escapeHtml(e.url_drive)}" target="_blank" rel="noopener">${escapeHtml(e.nombre_archivo||'Evidencia')} ↗</a><small>${dateLabel(e.fecha_subida)}</small></div>`).join('');
+          error.textContent='Archivo de apoyo guardado. El compromiso conserva su estado.';
+          const section=$('#detail-support-files');
+          if(section)section.innerHTML=renderCommitmentFiles(result.detail,true);
         } else $('#dependencies-section').outerHTML=renderDependencies(result.detail);
       }
-      showToast(form.id==='file-upload-form'?'Archivo adjunto.':'Dependencias guardadas.');
+      showToast(form.id==='file-upload-form'?'Archivo de apoyo guardado.':'Dependencias guardadas.');
     } catch(cause){error.textContent=cause.message;if(cause.code==='CONFLICT')state.syncRequested=true;}
   }
 
   /** Prepara la selección de un archivo ya adjunto para el flujo de cierre existente. */
   function prepareEvidenceSelection() {
     const form=$('#evidence-form'),detail=state.details[form.elements.compromiso_id.value],seen=new Set();
-    $('#evidence-existing').innerHTML='<option value="">Usar un enlace</option>'+(detail?detail.evidence:[]).filter(e=>e.tipo_evidencia==='ARCHIVO'&&!seen.has(e.drive_file_id)&&seen.add(e.drive_file_id)).map(e=>`<option value="${escapeHtml(e.evidencia_id)}">${escapeHtml(e.nombre_archivo)}</option>`).join('');
+    $('#evidence-existing').innerHTML='<option value="__upload">Subir imagen o archivo desde mi equipo</option><option value="">Usar un enlace</option>'+(detail?detail.evidence:[]).filter(e=>['ARCHIVO','ADJUNTO'].includes(e.tipo_evidencia)&&!seen.has(e.drive_file_id)&&seen.add(e.drive_file_id)).map(e=>`<option value="${escapeHtml(e.evidencia_id)}">${escapeHtml(e.nombre_archivo)}</option>`).join('');
     updateEvidenceSelection();
   }
 
   /** Alterna los campos de enlace y el adjunto seleccionado sin perder el flujo de aprobación. */
   function updateEvidenceSelection() {
-    const form=$('#evidence-form'),existing=!!form.elements.evidencia_id.value;
-    ['nombre','url'].forEach(name=>{form.elements[name].required=!existing;form.elements[name].disabled=existing;});
-    $('#evidence-name-wrap').classList.toggle('hidden',existing);$('#evidence-url-wrap').classList.toggle('hidden',existing);
+    const form=$('#evidence-form'),upload=form.elements.evidencia_id.value==='__upload',link=!form.elements.evidencia_id.value;
+    ['nombre','url'].forEach(name=>{form.elements[name].required=link;form.elements[name].disabled=!link;});
+    form.elements.archivo.required=upload;form.elements.archivo.disabled=!upload;
+    $('#evidence-file-wrap').classList.toggle('hidden',!upload);
+    $('#evidence-name-wrap').classList.toggle('hidden',!link);$('#evidence-url-wrap').classList.toggle('hidden',!link);
+  }
+
+  /**
+   * Sube la evidencia directamente a Drive y luego envía el cierre; conserva el archivo para reintentar.
+   * @param {HTMLFormElement} form - Formulario de evidencia con ID, versión y solicitud estable.
+   * @returns {Promise<void>} Envío completado o error visible sin perder el borrador.
+   */
+  async function submitEvidenceForm(form) {
+    const payload={compromiso_id:form.elements.compromiso_id.value,comentario:form.elements.comentario.value,expected_version:form.dataset.version};
+    const mode=form.elements.evidencia_id.value,file=form.elements.archivo.files[0];
+    const status=$('#evidence-status'),error=$('#evidence-error');error.textContent='';
+    const controls=Array.from(form.querySelectorAll('input,select,textarea'));controls.forEach(control=>control.disabled=true);
+    try {
+      if(mode==='__upload') {
+        if(!file||!file.size||file.size>5*1024*1024)throw new Error('Selecciona una imagen o archivo de hasta 5 MiB.');
+        status.textContent='Subiendo evidencia a Drive…';
+        const upload=await callServer('uploadCommitmentFile',{...payload,request_id:form.dataset.requestId,nombre:file.name,base64:await readUploadFile(file)});
+        form.dataset.version=upload.detail.commitment._version;payload.expected_version=form.dataset.version;payload.evidencia_id=upload.evidencia_id;
+        applyMutation(upload);prepareEvidenceSelection();form.elements.evidencia_id.value=upload.evidencia_id;controls.forEach(control=>control.disabled=true);
+        status.textContent='Archivo guardado en Drive. Enviando evidencia de cierre…';
+      } else if(mode)payload.evidencia_id=mode;
+      else {payload.nombre=form.elements.nombre.value;payload.url=form.elements.url.value;}
+      const result=await callServer('submitEvidence',payload);
+      $('#evidence-dialog').close();applyMutation(result);showToast(result.state==='CERRADO'?'Compromiso cerrado con evidencia.':'Evidencia enviada a aprobación.');
+    } catch(cause) {
+      error.textContent=cause.message;
+      if(payload.evidencia_id&&mode==='__upload')status.textContent='El archivo quedó guardado en Drive, pero el cierre no se completó. Puedes reintentar con el archivo seleccionado sin volver a subirlo.';
+      else status.textContent='';
+      if(cause.code==='CONFLICT')state.syncRequested=true;
+    } finally {controls.forEach(control=>control.disabled=false);updateEvidenceSelection();}
   }
 
   /**
@@ -144,11 +190,13 @@
 
   /** Registra filtros de informe y controles de adjuntos una sola vez. */
   function startCollaboration() {
+    $('#evidence-dialog').addEventListener('cancel',event=>{if($('#evidence-form').dataset.busy==='true')event.preventDefault();});
     $('#evidence-existing').addEventListener('change',updateEvidenceSelection);
     ['report-owner','report-project','report-from','report-to','report-mode'].forEach(id=>$('#'+id).addEventListener('change',renderMeetingReport));
     $('#report-download').addEventListener('click',downloadMeetingReport);$('#report-print').addEventListener('click',()=>window.print());
     document.addEventListener('input',event=>{
       if(event.target.closest('#file-upload-form'))event.target.closest('form').dataset.requestId=crypto.randomUUID();
+      if(event.target.closest('#evidence-form')&&$('#evidence-form').dataset.busy!=='true')$('#evidence-form').dataset.requestId=crypto.randomUUID();
       if(event.target.id==='dependency-search')$$('.dependency-choice').forEach(label=>label.classList.toggle('hidden',!label.textContent.toLowerCase().includes(event.target.value.toLowerCase())));
     });
   }
