@@ -28,7 +28,7 @@
     } catch(error){/* En el iframe de Apps Script se conserva la ampliación dentro de la web. */}
   }
 
-  /** Representa las columnas y las tarjetas autorizadas; permite mover mediante selector o arrastre. */
+  /** Representa las columnas y las tarjetas autorizadas; permite mover mediante arrastre. */
   function renderBoard() {
     if(!state.data){$('#kanban-board').replaceChildren();$('#board-owners').replaceChildren();state.boardOwner='';return;}
     renderBoardOwners();
@@ -42,10 +42,21 @@
         const detail=state.details[c.compromiso_id],items=c.checklist||[],done=items.filter(i=>i.done).length;
         const timing=detail.boardTiming||{};
         const canMove=detail.permissions.edit&&!state.boardBusy;
-        const targets=UI_CONFIG.openStatus.concat(detail.permissions.close?[booleanValue(c.requiere_aprobacion)?'EN_APROBACION':'CERRADO']:[]);
-        return `<article class="kanban-card" data-card="${escapeHtml(c.compromiso_id)}" draggable="${canMove}"><button type="button" class="text-button kanban-title" data-action="board-detail" data-id="${escapeHtml(c.compromiso_id)}">${escapeHtml(c.titulo)}</button><p class="task-sub">${escapeHtml(c.project_name)}</p><p>${escapeHtml(c.owner_name)} · ${dateLabel(c.fecha_objetivo)}</p><span class="pill ${criticalityClass(c.criticidad)}">${criticalityName(c.criticidad)}</span>${renderBoardTiming(timing)}${renderCardBaseline(detail.baseline)}${renderDependencyBadge(detail.dependencies)}<div class="kanban-progress"><progress max="100" value="${Number(c.porcentaje_avance)||0}" aria-label="Avance"></progress><span>${Number(c.porcentaje_avance)||0}%</span></div>${items.length?`<span class="muted">Checklist: ${done}/${items.length}</span>`:''}${canMove?`<label class="kanban-move">Mover a<select data-board-move="${escapeHtml(c.compromiso_id)}">${targets.map(s=>`<option value="${s}" ${s===status?'selected':''}>${statusName(s)}</option>`).join('')}</select></label>`:''}</article>`;
+        return `<article class="kanban-card" data-card="${escapeHtml(c.compromiso_id)}" draggable="${canMove}"><button type="button" class="text-button kanban-title" data-action="board-detail" data-id="${escapeHtml(c.compromiso_id)}">${escapeHtml(c.titulo)}</button><p class="task-sub">${escapeHtml(c.project_name)}</p><div class="kanban-person-row">${renderBoardPerson(c)}<span class="kanban-due" title="Fecha de compromiso">${dateLabel(c.fecha_objetivo)}</span></div><span class="pill ${criticalityClass(c.criticidad)}">${criticalityName(c.criticidad)}</span>${renderBoardTiming(timing)}${renderCardBaseline(detail.baseline)}${renderDependencyBadge(detail.dependencies)}<div class="kanban-progress"><progress max="100" value="${Number(c.porcentaje_avance)||0}" aria-label="Avance"></progress><span>${Number(c.porcentaje_avance)||0}%</span></div>${items.length?`<span class="muted">Checklist: ${done}/${items.length}</span>`:''}</article>`;
       }).join('')||'<p class="empty-state">Sin compromisos.</p>'}</div></section>`;
     }).join('');
+  }
+
+  /**
+   * Destaca al responsable con iniciales y un color estable derivado de su ID.
+   * @param {Object} commitment - Compromiso con ID y nombre del responsable.
+   * @returns {string} Etiqueta de responsable escapada, sin consultas adicionales.
+   */
+  function renderBoardPerson(commitment) {
+    const name=String(commitment.owner_name||'Sin responsable');
+    const hash=Array.from(String(commitment.owner_id||name)).reduce((value,char)=>(Math.imul(value,31)+char.codePointAt(0))>>>0,0);
+    const hue=hash%360,initials=name.trim().split(/\s+/).slice(0,2).map(word=>Array.from(word)[0]||'').join('').toUpperCase();
+    return `<span class="kanban-person" style="--person-hue:${hue}" title="Responsable: ${escapeHtml(name)}"><span class="kanban-person-avatar" aria-hidden="true">${escapeHtml(initials)}</span><span>${escapeHtml(name)}</span></span>`;
   }
 
   /** Representa responsables y cantidades autorizadas; conserva la selección entre sincronizaciones. */
@@ -98,7 +109,6 @@
     $$('#kanban-board [data-card]').forEach(card=>{
       const detail=state.details[card.dataset.card],enabled=!!detail?.permissions.edit&&!state.boardBusy;
       card.draggable=enabled;
-      const select=$('[data-board-move]',card);if(select){select.disabled=!enabled;if(detail)select.value=detail.commitment.estado;}
     });
   }
 
@@ -136,7 +146,6 @@
     });
     $('#board-search').addEventListener('input',renderBoard);
     $('#board-mine').addEventListener('change',renderBoard);
-    document.addEventListener('change',event=>{if(event.target.matches('[data-board-move]'))moveBoardCard(event.target.dataset.boardMove,event.target.value);});
     document.addEventListener('dragstart',event=>{const card=event.target.closest('[data-card]');if(!card||card.draggable!==true)return;state.draggedCard=card.dataset.card;event.dataTransfer.setData('text/plain',card.dataset.card);event.dataTransfer.effectAllowed='move';});
     document.addEventListener('dragover',event=>{if(state.draggedCard&&event.target.closest('[data-column]'))event.preventDefault();});
     document.addEventListener('drop',event=>{const column=event.target.closest('[data-column]');if(!column||!state.draggedCard)return;event.preventDefault();const id=state.draggedCard;state.draggedCard=null;moveBoardCard(id,column.dataset.column);});
